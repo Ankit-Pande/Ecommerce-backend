@@ -1,0 +1,244 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [vector]
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  COD
+  ONLINE
+}
+
+model User {
+  id    String  @id @default(uuid())
+  phone String  @unique
+  email String? @unique
+  name  String?
+  role  Role    @default(USER)
+
+  isBlocked Boolean @default(false)
+  isDeleted Boolean @default(false)
+
+  aiTokenCount Int      @default(20)
+  tokenResetAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  addresses Address[]
+  cart      Cart?
+  orders    Order[]
+
+  @@index([phone])
+  @@index([email])
+  @@index([isDeleted])
+  @@map("users")
+}
+
+model Address {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title         String
+  receiverName  String
+  receiverPhone String
+
+  line1   String
+  line2   String?
+  city    String
+  state   String
+  zip     String
+  country String  @default("India")
+
+  isDefault Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([isDefault])
+  @@map("addresses")
+}
+
+model Category {
+  id   String @id @default(uuid())
+  name String @unique
+  slug String @unique
+
+  parentId String?
+  parent   Category?  @relation("SubCategories", fields: [parentId], references: [id])
+  children Category[] @relation("SubCategories")
+
+  products Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([slug])
+  @@index([parentId])
+  @@map("categories")
+}
+
+model Product {
+  id String @id @default(uuid())
+
+  name        String
+  slug        String @unique
+  description String
+
+  price         Decimal
+  discountPrice Decimal?
+
+  stock Int @default(0)
+
+  imageUrl String
+  images   String[]
+
+  ratings    Float @default(0.0)
+  numReviews Int   @default(0)
+
+  isHidden   Boolean @default(false)
+  isTrending Boolean @default(false)
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  embedding Unsupported("vector(768)")?
+
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([categoryId])
+  @@index([slug])
+  @@index([price])
+  @@index([name])
+  @@index([isTrending])
+  @@map("products")
+}
+
+model Banner {
+  id       String  @id @default(uuid())
+  imageUrl String
+  isActive Boolean @default(true)
+
+  type String @default("CAROUSEL")
+  link String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("banners")
+}
+
+model Cart {
+  id String @id @default(uuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  items CartItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("carts")
+}
+
+model CartItem {
+  id String @id @default(uuid())
+
+  cartId String
+  cart   Cart   @relation(fields: [cartId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  quantity Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cartId, productId])
+  @@map("cart_items")
+}
+
+model Order {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  shippingAddress String
+
+  totalAmount   Float
+  totalDiscount Float @default(0)
+  finalAmount   Float
+
+  orderStatus   OrderStatus   @default(PENDING)
+  paymentStatus PaymentStatus @default(PENDING)
+  paymentMethod PaymentMethod @default(ONLINE)
+
+  razorpayOrderId   String? @unique
+  razorpayPaymentId String? @unique
+
+  items OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([paymentMethod])
+  @@index([paymentStatus])
+  @@map("orders")
+}
+
+model OrderItem {
+  id String @id @default(uuid())
+
+  orderId String
+  order   Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  name     String
+  price    Decimal
+  quantity Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@map("order_items")
+}
