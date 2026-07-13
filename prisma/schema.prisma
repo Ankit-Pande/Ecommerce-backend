@@ -1,0 +1,264 @@
+// Database connection
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ---------- Enums ----------
+enum Role {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+// Order ka lifecycle. PENDING = bana hai, payment baaki.
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+// Razorpay payment ka status.
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+// Payment ka tareeka — COD (delivery pe cash) ya ONLINE (Razorpay).
+enum PaymentMethod {
+  COD
+  ONLINE
+}
+
+// ---------- User (auth + role) ----------
+model User {
+  id        String   @id @default(uuid())
+  phone     String   @unique
+  name      String?
+  email     String?  @unique
+  gender    String?  // AI assistant (baad me) ke liye reserved — abhi code use nahi karta
+  role      Role     @default(USER)
+
+  isBlocked Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  addresses Address[]
+  cart      Cart?
+  orders    Order[]
+
+  @@index([isBlocked])
+}
+
+// ---------- Address (user ke multiple delivery address) ----------
+model Address {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  fullName  String
+  phone     String
+  line1     String
+  line2     String?
+  city      String
+  state     String
+  pincode   String
+  isDefault Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders    Order[]
+
+  @@index([userId])
+}
+
+// ---------- Category (parent-child = category + subcategory ek hi table) ----------
+model Category {
+  id        String     @id @default(uuid())
+  name      String
+  slug      String     @unique
+  image     String?
+
+  // Self-relation: parentId null = top category, warna subcategory.
+  parentId  String?
+  parent    Category?  @relation("SubCategories", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Category[] @relation("SubCategories")
+
+  isActive  Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  products  Product[]
+
+  @@index([parentId, isActive])
+}
+
+// ---------- Brand ----------
+model Brand {
+  id        String    @id @default(uuid())
+  name      String
+  slug      String    @unique
+  logo      String?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  products  Product[]
+
+  @@index([isActive])
+}
+
+// ---------- Product (catalog ka core, 50k+ products) ----------
+model Product {
+  id              String   @id @default(uuid())
+  name            String
+  slug            String   @unique
+  description     String
+
+  // Paise me store (Rs.499 = 49900). Float NAHI — payment rounding bug se bachne ke liye.
+  pricePaise      Int
+  discountPercent Int      @default(0)
+  // Selling price (discount ke baad) — DB trigger pricePaise/discountPercent badalte hi
+  // isse khud update karta hai. Price filter/sort ISI pe hote hain (Flipkart jaisa).
+  sellPaise       Int      @default(0)
+
+  stock           Int      @default(0)
+  color           String?  // filter ke liye (e.g. "red", "black"), optional
+  images          String[]
+
+  categoryId      String
+  category        Category @relation(fields: [categoryId], references: [id])
+  brandId         String?
+  brand           Brand?   @relation(fields: [brandId], references: [id])
+
+  isActive        Boolean  @default(true)
+  isTrending      Boolean  @default(false)
+
+  // AI semantic search — Gemini text-embedding-004 (768 dim), pgvector column.
+  // Unsupported type: saare reads/writes raw SQL se (embedding.service).
+  embedding       Unsupported("vector(768)")?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  orderItems      OrderItem[]
+  cartItems       CartItem[]
+
+  // 200k-ready indexing:
+  @@index([categoryId, isActive])    // category listing + filter
+  @@index([brandId, isActive])       // brand filter
+  @@index([isTrending, isActive])    // trending section
+  @@index([isActive, createdAt])     // recently added + cursor pagination
+  @@index([isActive, pricePaise])    // MRP-based queries (admin)
+  @@index([isActive, sellPaise])     // selling-price sort/filter (storefront)
+  @@index([color, isActive])         // color filter
+  @@index([categoryId, brandId])     // facets: category ke brands (DISTINCT)
+  @@index([categoryId, color])       // facets: category ke colors (DISTINCT)
+  // NOTE: full-text search ke liye GIN index aur tsvector column
+  // migration me raw SQL se add honge (Prisma abhi tsvector native nahi deta).
+  // Aage pgvector embedding column bhi isi tarah add hoga (AI semantic search).
+}
+
+// ---------- Cart (har user ka ek cart) ----------
+model Cart {
+  id        String     @id @default(uuid())
+  userId    String     @unique
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  items     CartItem[]
+}
+
+model CartItem {
+  id        String   @id @default(uuid())
+  cartId    String
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity  Int      @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Ek product cart me ek hi baar (quantity badhao, duplicate row nahi).
+  @@unique([cartId, productId])
+}
+
+// ---------- Order ----------
+model Order {
+  id          String        @id @default(uuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id])
+
+  // Address delete pe order safe rahe isliye SetNull + neeche snapshot fields.
+  addressId   String?
+  address     Address?      @relation(fields: [addressId], references: [id], onDelete: SetNull)
+
+  // Delivery snapshot (address baad me badle/delete ho to order ka pata na badle).
+  shipName    String
+  shipPhone   String
+  shipLine1   String
+  shipLine2   String?
+  shipCity    String
+  shipState   String
+  shipPincode String
+
+  totalPaise    Int
+  status        OrderStatus   @default(PENDING)
+  paymentStatus PaymentStatus @default(PENDING)
+  paymentMethod PaymentMethod @default(ONLINE)
+
+  // Razorpay payment fields.
+  razorpayOrderId   String?   @unique
+  razorpayPaymentId String?
+  razorpaySignature String?
+
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  items       OrderItem[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model OrderItem {
+  id          String  @id @default(uuid())
+  orderId     String
+  order       Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product @relation(fields: [productId], references: [id])
+
+  // Order ke time ka price/naam snapshot — baad me product price badle to
+  // purana order na badle.
+  productName String
+  pricePaise  Int
+  quantity    Int
+
+  @@index([orderId])
+}
+
+// ---------- Banner (admin carousel/promo) ----------
+model Banner {
+  id        String   @id @default(uuid())
+  image     String
+  link      String?
+  position  Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, position])
+}
