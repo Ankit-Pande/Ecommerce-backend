@@ -1,14 +1,9 @@
 import { Prisma, PrismaClient } from "@prisma/client";
-import { env } from "./env";
 import { logger } from "./winston";
 import { AppError } from "../utils/appError";
 
-// Ek hi Prisma client. Dev hot-reload pe naya client na bane.
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
-
-export const prisma = globalForPrisma.prisma ?? new PrismaClient({ log: ["warn", "error"] });
-
-if (env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+// Poori app me ek hi Prisma client (connection pool).
+export const prisma = new PrismaClient({ log: ["warn", "error"] });
 
 export async function connectDB(): Promise<void> {
   try {

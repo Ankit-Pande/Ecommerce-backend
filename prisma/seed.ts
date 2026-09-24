@@ -1,5 +1,12 @@
+import "dotenv/config";
 import { randomUUID } from "crypto";
 import { PrismaClient } from "@prisma/client";
+
+// Seed pehle poora DB saaf karta hai — live DB par galti se chala to saara asli data ud jaata.
+if (process.env.NODE_ENV !== "development") {
+  console.error("Seed sirf NODE_ENV=development me chalta hai (ye poora DB saaf karta hai).");
+  process.exit(1);
+}
 
 const prisma = new PrismaClient();
 
@@ -375,7 +382,8 @@ const TOTAL_PRODUCTS = 1500;
 const TOTAL_USERS = 60;
 const TOTAL_ORDERS = 900;
 const BATCH = 1000;
-const SUPER_ADMIN_PHONE = "6392061026";
+// Wahi number jo .env me hai — login par auth.service bhi isi ko super admin banati hai.
+const SUPER_ADMIN_PHONE = process.env.SUPER_ADMIN_PHONE ?? "9876543210";
 
 // ---------------------------------------------------------------------------
 // Purana data hatao — seed dobara chalane par duplicate na banein.
@@ -578,8 +586,10 @@ async function main() {
     const userAddresses = addresses.filter((a) => a.userId === user.id);
     const address = pick(userAddresses);
 
-    const status = pick(["DELIVERED", "DELIVERED", "DELIVERED", "SHIPPED", "CONFIRMED", "PENDING", "CANCELLED"] as const);
     const paymentMethod = chance(55) ? ("ONLINE" as const) : ("COD" as const);
+    const picked = pick(["DELIVERED", "DELIVERED", "DELIVERED", "SHIPPED", "CONFIRMED", "PENDING", "CANCELLED"] as const);
+    // COD order bante hi CONFIRMED hota hai — PENDING sirf unpaid online order.
+    const status = paymentMethod === "COD" && picked === "PENDING" ? "CONFIRMED" : picked;
 
     // COD par paisa delivery pe milta hai; online par pay hone ke baad hi COMPLETED.
     const paymentStatus =
@@ -604,6 +614,11 @@ async function main() {
       chosen.add(product.id);
 
       const quantity = between(1, 3);
+      // PENDING order ka stock ruka hua hai — deadline par releaseExpiredOrders() use wapas jodega.
+      if (status === "PENDING") {
+        if (product.stock < quantity) continue;
+        product.stock -= quantity;
+      }
       const pricePaise = product.sellPaise;
       totalPaise += pricePaise * quantity;
 
@@ -619,6 +634,7 @@ async function main() {
 
       if (status === "DELIVERED") deliveredPairs.push({ userId: user.id, productId: product.id });
     }
+    if (totalPaise === 0) continue;
 
     orders.push({
       id: orderId,

@@ -1,8 +1,8 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 import { env } from "./config/env";
 import { corsOptions } from "./config/cors";
-import { helmetConfig } from "./config/helmet";
 import { requestLogger } from "./config/morgan";
 import { razorpayWebhook } from "./controller/order.controller";
 import { errorHandler } from "./middleware/error";
@@ -15,7 +15,8 @@ export const app = express();
 // Proxy (Railway) ke peeche — iske bina req.ip sabke liye proxy ka IP hota aur rate limit sab pe ek saath lagti.
 app.set("trust proxy", env.TRUST_PROXY_HOPS);
 
-app.use(helmetConfig);
+// Security headers. JSON API hai, isliye helmet ka default kaafi hai.
+app.use(helmet());
 app.use(cors(corsOptions));
 app.use(requestLogger);
 

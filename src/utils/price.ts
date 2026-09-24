@@ -10,15 +10,15 @@ export const ACTIVE_CATEGORY = {
 export const LOW_STOCK_AT = 5;
 
 // Offer ki deadline nikal gayi to discount 0 — minute wali sweep chali ho ya nahi.
-export function effectiveDiscount(discountPercent: number, offerEndsAt?: Date | string | null): number {
-  if (offerEndsAt && new Date(offerEndsAt).getTime() <= Date.now()) return 0;
+export function effectiveDiscount(discountPercent: number, offerEndsAt?: Date | null): number {
+  if (offerEndsAt && offerEndsAt.getTime() <= Date.now()) return 0;
   return discountPercent;
 }
 
 export function finalPrice(
   pricePaise: number,
   discountPercent: number,
-  offerEndsAt?: Date | string | null,
+  offerEndsAt?: Date | null,
 ): number {
   const percent = effectiveDiscount(discountPercent, offerEndsAt);
   return pricePaise - Math.round((pricePaise * percent) / 100);
@@ -35,20 +35,23 @@ export function rating(sum: number, count: number) {
   return { average: count === 0 ? 0 : Math.round((sum / count) * 10) / 10, count };
 }
 
+// productCard() ko jo fields chahiye — har card wali query yahi select karti hai.
+export const CARD_SELECT = {
+  id: true,
+  name: true,
+  slug: true,
+  images: true,
+  pricePaise: true,
+  discountPercent: true,
+  offerEndsAt: true,
+  stock: true,
+  ratingSum: true,
+  ratingCount: true,
+} satisfies Prisma.ProductSelect;
+
 // Home, catalog, related, recently-viewed, batch — sabka ek hi product card.
 // Har list yahi bhejti hai, taaki frontend ek hi component se kaam chala sake.
-export function productCard(p: {
-  id: string;
-  name: string;
-  slug: string;
-  images: string[];
-  pricePaise: number;
-  discountPercent: number;
-  offerEndsAt: Date | null;
-  stock: number;
-  ratingSum: number;
-  ratingCount: number;
-}) {
+export function productCard(p: Prisma.ProductGetPayload<{ select: typeof CARD_SELECT }>) {
   return {
     id: p.id,
     name: p.name,

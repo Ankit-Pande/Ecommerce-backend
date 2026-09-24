@@ -1,19 +1,6 @@
 import { prisma } from "../config/db";
 import { CACHE_SECONDS, remember } from "../config/cache";
-import { ACTIVE_CATEGORY, productCard } from "../utils/price";
-
-const CARD_SELECT = {
-  id: true,
-  name: true,
-  slug: true,
-  images: true,
-  pricePaise: true,
-  discountPercent: true,
-  offerEndsAt: true,
-  stock: true,
-  ratingSum: true,
-  ratingCount: true,
-} as const;
+import { ACTIVE_CATEGORY, CARD_SELECT, productCard } from "../utils/price";
 
 const SECTION_SIZE = 10;
 

@@ -3,6 +3,7 @@ import { AppError } from "../utils/appError";
 import { bumpStorefrontCache, CACHE_SECONDS, remember } from "../config/cache";
 import {
   ACTIVE_CATEGORY,
+  CARD_SELECT,
   effectiveDiscount,
   finalPrice,
   productCard,
@@ -11,19 +12,6 @@ import {
 } from "../utils/price";
 
 const VIEW_KEEP_DAYS = 90;
-
-const CARD_SELECT = {
-  id: true,
-  name: true,
-  slug: true,
-  images: true,
-  pricePaise: true,
-  discountPercent: true,
-  offerEndsAt: true,
-  stock: true,
-  ratingSum: true,
-  ratingCount: true,
-} as const;
 
 export const productService = {
   // Product detail page (5 min cache). Exact stock nahi, sirf status.

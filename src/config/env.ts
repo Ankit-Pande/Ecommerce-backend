@@ -11,7 +11,7 @@ const neededInProd = isProd ? z.string().min(1) : z.string().optional();
 // Saari env ek jagah check. Galat ya missing ho to app start hi nahi hogi.
 const schema = z
   .object({
-    NODE_ENV: z.enum(["development", "production", "test"]).default("production"),
+    NODE_ENV: z.enum(["development", "production"]).default("production"),
     PORT: z.coerce.number().int().positive().default(8000),
     LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
     TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(1),

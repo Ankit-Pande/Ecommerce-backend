@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../config/db";
 import { CACHE_SECONDS, remember } from "../config/cache";
 import { paginate } from "../utils/paginate";
-import { ACTIVE_CATEGORY, productCard } from "../utils/price";
+import { ACTIVE_CATEGORY, CARD_SELECT, productCard } from "../utils/price";
 
 type CatalogQuery = {
   q?: string;
@@ -23,21 +23,12 @@ type CatalogQuery = {
 };
 
 const LIST_SELECT = {
-  id: true,
-  name: true,
-  slug: true,
-  images: true,
-  pricePaise: true,
-  discountPercent: true,
-  offerEndsAt: true,
-  stock: true,
+  ...CARD_SELECT,
   color: true,
   gender: true,
   ageGroup: true,
   isTrending: true,
   isFeatured: true,
-  ratingSum: true,
-  ratingCount: true,
   category: { select: { name: true, slug: true } },
   brand: { select: { name: true, slug: true, isActive: true } },
 } satisfies Prisma.ProductSelect;

@@ -155,7 +155,8 @@ export const adminListOrderSchema = z.object({
 
 export const updateOrderStatusSchema = z.object({
   params: idParams,
-  body: z.object({ status: z.enum(["CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"]) }).strict(),
+  // CONFIRMED sirf webhook/COD checkout se hota hai, admin se nahi.
+  body: z.object({ status: z.enum(["SHIPPED", "DELIVERED", "CANCELLED"]) }).strict(),
 });
 
 // ---------- Users ----------

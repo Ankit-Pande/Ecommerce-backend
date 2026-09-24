@@ -2,21 +2,15 @@ import Redis from "ioredis";
 import { env } from "./env";
 import { logger } from "./winston";
 
-const globalForRedis = globalThis as unknown as { redis?: Redis };
-
 // Redis: OTP, rate limit, session cache aur public data cache.
-export const redis =
-  globalForRedis.redis ??
-  new Redis(env.REDIS_URL, {
-    maxRetriesPerRequest: 2,
-    retryStrategy: (times) => Math.min(times * 200, 2000),
-    // Redis down ho to command turant fail ho, request latke nahi.
-    enableOfflineQueue: false,
-    connectTimeout: 5000,
-    commandTimeout: 1000,
-  });
-
-if (env.NODE_ENV !== "production") globalForRedis.redis = redis;
+export const redis = new Redis(env.REDIS_URL, {
+  maxRetriesPerRequest: 2,
+  retryStrategy: (times) => Math.min(times * 200, 2000),
+  // Redis down ho to command turant fail ho, request latke nahi.
+  enableOfflineQueue: false,
+  connectTimeout: 5000,
+  commandTimeout: 1000,
+});
 
 redis.on("connect", () => logger.info("Redis connected"));
 redis.on("error", (error) => logger.error("Redis error", { error }));

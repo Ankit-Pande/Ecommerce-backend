@@ -42,7 +42,7 @@ apnakart-backend/
 │   ├── migrations/            git me commit hona zaroori
 │   └── seed.ts                category, brand, product, order, review
 ├── src/
-│   ├── config/         8 file   setup — connection banate hain, band nahi karte
+│   ├── config/         7 file   setup — connection banate hain, band nahi karte
 │   ├── utils/          8 file   pure function — DB/Redis import bilkul nahi
 │   ├── middleware/     6 file   request ke raaste me
 │   ├── integration/    3 file   bahar ki duniya
@@ -91,7 +91,7 @@ jaate hain aur signature kabhi match nahi karega.
 
 ---
 
-## 3. `config/` — 8 file
+## 3. `config/` — 7 file
 
 Rule: **config connection banati hai, band nahi karti.** Band karna `server.ts` ka kaam hai,
 kyunki wahi jaanta hai SIGTERM kab aaya.
@@ -99,12 +99,11 @@ kyunki wahi jaanta hai SIGTERM kab aaya.
 | File | Exports | Kyun aisa hai |
 | --- | --- | --- |
 | `env.ts` | `env` | Zod se poori `process.env` validate. Galat/missing par `process.exit(1)` — app start hi na ho. `NODE_ENV` na ho to **production** maano, taki galti se dev mode (khula CORS, SMS ki jagah log) live par na chal jaye. Poore codebase me `process.env` kahin aur nahi padha jaata. |
-| `db.ts` | `prisma`, `connectDB`, `disconnectDB`, `lockUser` | Ek hi PrismaClient, `globalThis` par cache (dev hot-reload par naya client na bane). `lockUser(tx, userId)` user row lock karta hai — ek user ki cart/address/checkout request ek-ek karke chalein. |
+| `db.ts` | `prisma`, `connectDB`, `disconnectDB`, `lockUser` | Poori app me ek hi PrismaClient (ek connection pool). `lockUser(tx, userId)` user row lock karta hai — ek user ki cart/address/checkout request ek-ek karke chalein. |
 | `redis.ts` | `redis`, `disconnectRedis`, `countHit` | `enableOfflineQueue: false` + `commandTimeout: 1000` — Redis down ho to command turant fail ho, request latke nahi. `countHit` ek Lua script hai: INCR aur pehli baar EXPIRE ek atomic step me, warna expiry chhoot jaye to key hamesha ke liye block kar deti. |
 | `winston.ts` | `logger` | Sirf Console transport. Prod me JSON, dev me rangeen text. **File rotation jaanbujhkar nahi** — Railway ephemeral hai, file reboot par ud jaati hai; Railway khud logs collect karta hai. Custom replacer isliye ki Error JSON me `{}` na ban jaye. |
 | `morgan.ts` | `requestLogger` | HTTP access log winston me. `/health` skip — uptime ping se log na bhare. Response time yahin se milta hai, "kaun si API slow hai" isi se pata chalta hai. |
 | `cors.ts` | `corsOptions` | `FRONTEND_ORIGINS` comma-separated whitelist. `credentials: true`. Origin na ho (Postman, Android) to allow. Dev me sab allow. |
-| `helmet.ts` | `helmetConfig` | `helmet()` default. JSON API HTML serve nahi karta, isliye CSP ki lambi config bekaar hai. |
 | `cache.ts` | `remember`, `bumpStorefrontCache`, `CACHE_SECONDS` | Redis ke upar ka cache layer. `utils/` me isliye nahi hai ki wo Redis import karta hai — aur `utils/` ka rule hai ki wahan sirf pure function rahenge. |
 
 ---
@@ -120,7 +119,7 @@ kyunki wahi jaanta hai SIGTERM kab aaya.
 | `cookies.ts` | `setRefreshCookie`, `clearRefreshCookie`, `readRefreshCookie` |
 | `paginate.ts` | `paginate(rows, limit)` |
 | `text.ts` | `titleCase()` — admin colour likhte waqt aur catalog filter padhte waqt, dono jagah ek hi normalization |
-| `price.ts` | `finalPrice`, `effectiveDiscount`, `stockStatus`, `rating`, `productCard`, `ACTIVE_CATEGORY`, `LOW_STOCK_AT` |
+| `price.ts` | `finalPrice`, `effectiveDiscount`, `stockStatus`, `rating`, `productCard`, `CARD_SELECT`, `ACTIVE_CATEGORY`, `LOW_STOCK_AT` |
 
 ### `price.ts` sabse important file hai
 
@@ -130,7 +129,7 @@ Agar formula 5 jagah copy ho gaya to kisi ek jagah bug rahega hi.
 `productCard()` ek hi shape deta hai: `pricePaise` = MRP, `finalPricePaise` = discount ke baad,
 `discountPercent`, `stockStatus`, `image`, `rating`. Home, catalog, related, recently-viewed aur
 batch — paanchon yahi bhejte hain. Koi bhi nayi list API apna shape na banaye, yahi use kare.
-Iska matlab har us select me `ratingSum` aur `ratingCount` hone chahiye jo `productCard()` ko jaata hai.
+Card wali har query `CARD_SELECT` hi select karti hai (catalog use `...CARD_SELECT` se badhata hai) — field list ek hi jagah.
 
 ### `config/cache.ts` ka version trick
 
@@ -200,6 +199,7 @@ DB row **aur** Redis key dono uda deta hai, isliye purana token agli request par
 | `refresh` | `POST /auth/refresh` | 30/min/IP | rok do |
 | `checkout` | `POST /order/checkout` | 10/min/**user** | rok do |
 | `catalog-search` | `GET /catalog` jab `q` ho | 30/min/IP | jaane do |
+| `admin-upload` | `POST /admin/uploads` | 30/min/user | rok do |
 | `health` | `GET /health/ready` | 60/min/IP | jaane do |
 | `webhook` | `POST /api/order/webhook` | 300/min/IP | jaane do |
 
@@ -277,8 +277,9 @@ Form-data me sab string aata hai, isliye `admin.validation.ts` me:
 Zod default me unknown key chup-chaap strip karta hai. Wo bura hai: frontend ne galat spelling
 wala field bheja aur kabhi pata hi nahi chala. `.strict()` use loud banata hai.
 
-**Search ka minimum 3 character hai**, 1 nahi. Trigram index 3 se neeche kaam hi nahi karta —
-1-2 character ki search poori table scan kar deti hai. Yahi check `catalog.service` me dobara
+**Search ka minimum 2 character hai**, 1 nahi. "tv", "ac", "lg" asli search hain; 2 akshar par
+trigram index nahi lagta, par aisi queries gine-chune hain aur cache me baith jaati hain. 1 akshar
+har product se match karta — wo kabhi nahi. Yahi check `catalog.service` me har shabd par dobara
 lagta hai, kyunki `readBudget()` budget hataane ke baad text chhota kar sakta hai
 ("tv under 2000" → "tv").
 
@@ -502,7 +503,7 @@ khud par kuch nahi.
 
 ---
 
-## 11. `prisma/schema.prisma` — 13 model
+## 11. `prisma/schema.prisma` — 14 model
 
 | Model | Zaroori index |
 | --- | --- |
@@ -631,7 +632,7 @@ Admin sirf aage badha sakta hai. `SHIPPED` ke baad cancel nahi. Paid order yahan
 | Layer | Kya | Kahan |
 | --- | --- | --- |
 | Transport | HTTPS (Railway), `secure` cookie | — |
-| Headers | helmet default | `config/helmet.ts` |
+| Headers | helmet default | `app.ts` |
 | Origin | `FRONTEND_ORIGINS` whitelist, galat origin 403 | `config/cors.ts` |
 | Auth | OTP → JWT access (15 min, header) + refresh (15 din, httpOnly cookie) | `token.service.ts` |
 | Session | DB source of truth, Redis 60s cache, block par turant revoke | `token.service.ts` |
@@ -716,7 +717,7 @@ Minute wale job par `running` flag hai — pichhla khatam na hua ho to naya shur
 
 | Jagah | 2 lakh par | Status |
 | --- | --- | --- |
-| Catalog search `ILIKE '%..%'` | 3+ char par GIN trgm index chalta hai | min length 3 lagi hui hai |
+| Catalog search `ILIKE '%..%'` | 3+ char par GIN trgm index chalta hai | 2 char ki search ("tv", "ac") cache + 30/min limit ke peeche |
 | `typoMatchIds` | Sabse mehngi query | 2s timeout + 30/min rate limit lagi hui hai |
 | `filters()` ka `groupBy(color)` + `aggregate` | Bina category ke poori table par | 5 min cache |
 | Cursor pagination | Theek hai | `OFFSET` kabhi mat use karna |
@@ -739,8 +740,8 @@ padti hai, har request par. Frontend par "200+ results" ya sirf `nextCursor` dik
 cp .env.example .env          # secrets bharo: openssl rand -hex 32 (teeno alag)
 npm install
 npx prisma generate
-npx prisma migrate dev        # pehli baar: --name init
-npx prisma db seed
+npx prisma migrate dev        # migrations/ se saari table + pg_trgm index
+npx prisma db seed            # sirf NODE_ENV=development — pehle poora DB saaf karta hai
 npm run dev                   # dev me OTP SMS nahi jaata, log me chhapta hai
 npm run typecheck             # zero error aana chahiye
 ```
