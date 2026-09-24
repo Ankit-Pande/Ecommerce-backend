@@ -1,14 +1,12 @@
 import crypto from "crypto";
+import { env } from "../config/env";
 
-// Cryptographically secure OTP (Math.random nahi).
-export function generateOtp(length = 6): string {
-  const min = 10 ** (length - 1);
-  const max = 10 ** length;
-  return crypto.randomInt(min, max).toString();
+// Math.random nahi — crypto se 6 digit.
+export function generateOtp(): string {
+  return crypto.randomInt(100000, 1000000).toString();
 }
 
-// OTP plain redis me store NAHI karte — hash store karte hain.
-// Verify pe input ko hash karke compare. Leak ho bhi jaye to OTP safe.
-export function hashOtp(otp: string): string {
-  return crypto.createHash("sha256").update(otp).digest("hex");
+// Redis me OTP plain nahi rakhte. Phone + server secret ke saath hash — leak ho to bhi bekaar.
+export function hashOtp(phone: string, otp: string): string {
+  return crypto.createHmac("sha256", env.OTP_SECRET).update(`${phone}:${otp}`).digest("hex");
 }

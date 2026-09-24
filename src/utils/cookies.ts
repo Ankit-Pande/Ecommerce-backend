@@ -1,34 +1,23 @@
-import { Request, Response, CookieOptions } from "express";
+import { CookieOptions, Request, Response } from "express";
 import { env } from "../config/env";
+import { REFRESH_TTL_DAYS } from "./token";
 
-// Refresh token httpOnly cookie — JS (XSS) isse padh nahi sakta.
-// Path /api/auth tak seemit — sirf refresh/logout pe browser bhejta hai (aur endpoints
-// ko cookie ki zaroorat nahi). SameSite=Lax same-site (localhost:3000 <-> :5000) pe chalta.
-export const REFRESH_COOKIE = "refreshToken";
-
+const REFRESH_COOKIE = "refreshToken";
 const isProd = env.NODE_ENV === "production";
 
-// "30d"/"15m" -> milliseconds.
-function expiryToMs(exp: string): number {
-  const m = exp.match(/^(\d+)([smhd])$/);
-  if (!m) return 30 * 86400 * 1000;
-  const n = Number(m[1]);
-  const unit = m[2];
-  const sec = unit === "s" ? n : unit === "m" ? n * 60 : unit === "h" ? n * 3600 : n * 86400;
-  return sec * 1000;
-}
-
+// Refresh token httpOnly cookie me — JS (XSS) padh nahi sakta. Frontend alag domain pe
+// hai, isliye prod me SameSite=None + Secure. Path /api/auth: baaki API pe cookie jaati hi nahi.
 const baseOptions: CookieOptions = {
   httpOnly: true,
-  secure: isProd, // prod me HTTPS-only
-  sameSite: "lax",
+  secure: isProd,
+  sameSite: isProd ? "none" : "lax",
   path: "/api/auth",
 };
 
 export function setRefreshCookie(res: Response, token: string): void {
   res.cookie(REFRESH_COOKIE, token, {
     ...baseOptions,
-    maxAge: expiryToMs(env.JWT_REFRESH_EXPIRY),
+    maxAge: REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000,
   });
 }
 
@@ -36,13 +25,16 @@ export function clearRefreshCookie(res: Response): void {
   res.clearCookie(REFRESH_COOKIE, baseOptions);
 }
 
-// Dependency-free cookie read (cookie-parser ki zaroorat nahi).
+// cookie-parser ke bina seedha header se padh lo.
 export function readRefreshCookie(req: Request): string | undefined {
-  const header = req.headers.cookie;
-  if (!header) return undefined;
-  for (const part of header.split(";")) {
+  for (const part of req.headers.cookie?.split(";") ?? []) {
     const [name, ...rest] = part.trim().split("=");
-    if (name === REFRESH_COOKIE) return decodeURIComponent(rest.join("="));
+    if (name !== REFRESH_COOKIE) continue;
+    try {
+      return decodeURIComponent(rest.join("="));
+    } catch {
+      return undefined;
+    }
   }
   return undefined;
 }

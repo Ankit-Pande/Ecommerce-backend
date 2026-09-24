@@ -1,5 +1,4 @@
-import { Prisma } from "@prisma/client";
-import { prisma } from "../config/db";
+import { prisma, lockUser } from "../config/db";
 import { AppError } from "../utils/appError";
 
 type AddressInput = {
@@ -13,18 +12,9 @@ type AddressInput = {
   isDefault?: boolean;
 };
 
-// Ek hi address default reh sake — naya default set karte hi baaki false.
-async function clearOtherDefaults(
-  tx: Prisma.TransactionClient,
-  userId: string,
-  exceptId?: string
-) {
-  await tx.address.updateMany({
-    where: { userId, isDefault: true, ...(exceptId && { id: { not: exceptId } }) },
-    data: { isDefault: false },
-  });
-}
+const MAX_ADDRESSES = 5;
 
+// Har write user lock ke andar — ek hi waqt me do default address na ban jayein.
 export const addressService = {
   async list(userId: string) {
     return prisma.address.findMany({
@@ -33,38 +23,54 @@ export const addressService = {
     });
   },
 
+  // Pehla address apne aap default.
   async create(userId: string, data: AddressInput) {
     return prisma.$transaction(async (tx) => {
-      // Max 5 address per user (delivery ke liye kaafi, DB saaf rahe).
+      await lockUser(tx, userId);
       const count = await tx.address.count({ where: { userId } });
-      if (count >= 5) {
+      if (count >= MAX_ADDRESSES) {
         throw new AppError("Maximum 5 addresses allowed. Delete one first.", 400);
       }
 
-      // Pehla address apne aap default ban jaye.
-      const makeDefault = data.isDefault || count === 0;
-
-      if (makeDefault) await clearOtherDefaults(tx, userId);
-
-      return tx.address.create({
-        data: { ...data, userId, isDefault: makeDefault },
-      });
+      const isDefault = data.isDefault === true || count === 0;
+      if (isDefault) {
+        await tx.address.updateMany({ where: { userId, isDefault: true }, data: { isDefault: false } });
+      }
+      return tx.address.create({ data: { ...data, userId, isDefault } });
     });
   },
 
   async update(userId: string, id: string, data: Partial<AddressInput>) {
-    const existing = await prisma.address.findFirst({ where: { id, userId } });
-    if (!existing) throw new AppError("Address not found", 404);
-
     return prisma.$transaction(async (tx) => {
-      if (data.isDefault) await clearOtherDefaults(tx, userId, id);
+      await lockUser(tx, userId);
+      const existing = await tx.address.findFirst({ where: { id, userId } });
+      if (!existing) throw new AppError("Address not found", 404);
+      // User bina default address ke na rahe.
+      if (existing.isDefault && data.isDefault === false) {
+        throw new AppError("Set another address as default first", 400);
+      }
+
+      if (data.isDefault) {
+        await tx.address.updateMany({
+          where: { userId, isDefault: true, id: { not: id } },
+          data: { isDefault: false },
+        });
+      }
       return tx.address.update({ where: { id }, data });
     });
   },
 
+  // Default address hataya to sabse naya wala default ban jaata hai.
   async remove(userId: string, id: string) {
-    const existing = await prisma.address.findFirst({ where: { id, userId } });
-    if (!existing) throw new AppError("Address not found", 404);
-    await prisma.address.delete({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      await lockUser(tx, userId);
+      const existing = await tx.address.findFirst({ where: { id, userId } });
+      if (!existing) throw new AppError("Address not found", 404);
+      await tx.address.delete({ where: { id } });
+
+      if (!existing.isDefault) return;
+      const next = await tx.address.findFirst({ where: { userId }, orderBy: { createdAt: "desc" } });
+      if (next) await tx.address.update({ where: { id: next.id }, data: { isDefault: true } });
+    });
   },
 };

@@ -1,33 +1,28 @@
 import { Router } from "express";
-import {
-  sendOtp,
-  verifyOtp,
-  refreshTokens,
-  logout,
-} from "../controller/auth.controller";
+import { logout, refreshTokens, sendOtp, verifyOtp } from "../controller/auth.controller";
+import { rateLimiter } from "../middleware/rateLimiter";
 import { validate } from "../middleware/validate";
-import { otpIpLimiter, rateLimiter } from "../middleware/rateLimiter";
-import {
-  sendOtpSchema,
-  verifyOtpSchema,
-  refreshSchema,
-  logoutSchema,
-} from "../validation/auth.validation";
+import { sendOtpSchema, verifyOtpSchema } from "../validation/auth.validation";
 
 const router = Router();
 
-// OTP send: IP limiter (30/hr -> 30min block) + phone limiter otp.service me.
-router.post("/send-otp", otpIpLimiter, validate(sendOtpSchema), sendOtp);
+// Phone wali limit otp.service me hai; yahan sirf IP wali.
+router.post(
+  "/send-otp",
+  rateLimiter({ bucket: "send-otp", windowSec: 3600, max: 20 }),
+  validate(sendOtpSchema),
+  sendOtp,
+);
 
-// Verify: brute-force rok ke liye IP rate limit (10/min).
 router.post(
   "/verify-otp",
   rateLimiter({ bucket: "verify-otp", windowSec: 60, max: 10 }),
   validate(verifyOtpSchema),
-  verifyOtp
+  verifyOtp,
 );
 
-router.post("/refresh", validate(refreshSchema), refreshTokens);
-router.post("/logout", validate(logoutSchema), logout);
+// Refresh token cookie se aata hai, body nahi.
+router.post("/refresh", rateLimiter({ bucket: "refresh", windowSec: 60, max: 30 }), refreshTokens);
+router.post("/logout", logout);
 
 export const authRoutes = router;

@@ -1,450 +1,731 @@
+import { randomUUID } from "crypto";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-// Seed — super admin + REAL-looking demo catalog (100+ products, full category tree,
-// brands, banners). Idempotent: dobara chalao to duplicate nahi banega.
+// ---------------------------------------------------------------------------
+// Product images
+// ---------------------------------------------------------------------------
+// Picsum asli photo deta hai aur hamesha chalta hai, par photo product se match
+// nahi karegi. Asli photo Cloudinary par daalo to sirf ye ek function badlo.
+function imageUrl(slug: string, n: number): string {
+  return `https://picsum.photos/seed/${slug}-${n}/600/600`;
+}
 
-// Real topical images — Unsplash CDN (stable, category-relevant photos).
-const uns = (id: string, w: number, extra = "") =>
-  `https://images.unsplash.com/photo-${id}?w=${w}&q=80&auto=format&fit=crop${extra}`;
+// ---------------------------------------------------------------------------
+// Random — par har baar wahi
+// ---------------------------------------------------------------------------
+// Seed dobara chalao to bilkul wahi data bane, warna har run par catalog badal
+// jaata aur "kal jo product dekha tha wo kahan gaya" wali dikkat hoti.
+let seedState = 20260920;
+function random(): number {
+  seedState = (seedState + 0x6d2b79f5) | 0;
+  let t = Math.imul(seedState ^ (seedState >>> 15), 1 | seedState);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
 
-// Subcategory slug -> relevant Unsplash photo id.
-const SUBCAT_IMG: Record<string, string> = {
-  mobiles: "1511707171634-5f897ff02aa9",
-  laptops: "1496181133206-80ce9b88a853",
-  headphones: "1505740420928-5e560c06d30e",
-  cameras: "1516035069371-29a1b244cc32",
-  "smart-watches": "1523275335684-37898b6baf30",
-  "mens-clothing": "1521572163474-6864f9cf17ab",
-  "womens-clothing": "1483985988355-763728e1935b",
-  footwear: "1542291026-7eec264c27ff",
-  watches: "1524805444758-089113d48a6d",
-  "bags-backpacks": "1553062407-98eeb64c6a62",
-  furniture: "1555041469-a586c61ea9bc",
-  "kitchen-dining": "1556909212-d5b604d0c90d",
-  "home-decor": "1513519245088-0e12902e5a38",
-  bedding: "1540518614846-7eded433c457",
-  staples: "1542838132-92c53300491e",
-  "snacks-beverages": "1599490659213-e2b9527bd087",
-  "personal-care": "1596462502278-27bfdc403348",
-  televisions: "1593359677879-a4bb92f829d1",
-  refrigerators: "1571175443880-49e1d25b2bc5",
-  "washing-machines": "1626806787461-102c1bfaaea1",
-  "kitchen-appliances": "1574269909862-7e1d70bb8078",
-  fiction: "1544716278-ca5e3f4abd8c",
-  "non-fiction": "1512820790803-83ca734da794",
-  "childrens-books": "1503676260728-1c00da094a0b",
-  "toys-games": "1566576912321-d58ddd7a6088",
-  "kids-clothing": "1519689680058-324335c77eba",
-  "baby-care": "1515488042361-ee00e0ddd4e4",
-  "school-supplies": "1607453998774-d533f65dac99",
-};
-// Parent category slug -> representative image.
-const CAT_IMG: Record<string, string> = {
-  electronics: "1516035069371-29a1b244cc32",
-  fashion: "1483985988355-763728e1935b",
-  "home-furniture": "1555041469-a586c61ea9bc",
-  grocery: "1542838132-92c53300491e",
-  appliances: "1593359677879-a4bb92f829d1",
-  books: "1544716278-ca5e3f4abd8c",
-  "toys-kids": "1566576912321-d58ddd7a6088",
-};
-// Wide promo banners.
-const BANNER_IDS = [
-  "1441986300917-64674bd600d8",
-  "1607082348824-0a96f2a4b9da",
-  "1595777457583-95e059d581b8",
-  "1566576912321-d58ddd7a6088", // toys & kids
-  "1512820790803-83ca734da794", // books
-];
+const pick = <T>(list: readonly T[]): T => list[Math.floor(random() * list.length)];
+const between = (min: number, max: number) => min + Math.floor(random() * (max - min + 1));
+const chance = (percent: number) => random() * 100 < percent;
 
-const catImage = (slug: string) =>
-  uns(CAT_IMG[slug] ?? SUBCAT_IMG[slug] ?? "1441986300917-64674bd600d8", 600);
-// Product gallery — subcategory image ke 3 variants (thumbnails alag dikhein).
-const productImages = (subcatSlug: string): string[] => {
-  const id = SUBCAT_IMG[subcatSlug] ?? "1441986300917-64674bd600d8";
-  return [uns(id, 700), uns(id, 700, "&flip=h"), uns(id, 700, "&sat=-60")];
+const slugify = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+const daysFromNow = (days: number) => new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+// ---------------------------------------------------------------------------
+// Catalog ka dhancha
+// ---------------------------------------------------------------------------
+// price rupee me hai — neeche paise me badal dete hain.
+type Child = {
+  name: string;
+  item: string; // product ke naam me jo shabd aayega
+  price: [number, number];
+  variants: readonly string[];
+  about: string;
+  gender?: "Men" | "Women" | "Unisex";
+  ageGroup?: "Adult" | "Kids";
 };
 
-// ---------- Category tree (parent -> children) ----------
-const CATEGORY_TREE: { name: string; slug: string; children: { name: string; slug: string }[] }[] = [
+const CATALOG: { name: string; children: Child[] }[] = [
   {
-    name: "Electronics", slug: "electronics",
+    name: "Electronics",
     children: [
-      { name: "Mobiles", slug: "mobiles" },
-      { name: "Laptops", slug: "laptops" },
-      { name: "Headphones", slug: "headphones" },
-      { name: "Cameras", slug: "cameras" },
-      { name: "Smart Watches", slug: "smart-watches" },
-    ],
-  },
-  {
-    name: "Fashion", slug: "fashion",
-    children: [
-      { name: "Men's Clothing", slug: "mens-clothing" },
-      { name: "Women's Clothing", slug: "womens-clothing" },
-      { name: "Footwear", slug: "footwear" },
-      { name: "Watches", slug: "watches" },
-      { name: "Bags & Backpacks", slug: "bags-backpacks" },
-    ],
-  },
-  {
-    name: "Home & Furniture", slug: "home-furniture",
-    children: [
-      { name: "Furniture", slug: "furniture" },
-      { name: "Kitchen & Dining", slug: "kitchen-dining" },
-      { name: "Home Decor", slug: "home-decor" },
-      { name: "Bedding", slug: "bedding" },
-    ],
-  },
-  {
-    name: "Grocery", slug: "grocery",
-    children: [
-      { name: "Staples", slug: "staples" },
-      { name: "Snacks & Beverages", slug: "snacks-beverages" },
-      { name: "Personal Care", slug: "personal-care" },
-    ],
-  },
-  {
-    name: "Appliances", slug: "appliances",
-    children: [
-      { name: "Televisions", slug: "televisions" },
-      { name: "Refrigerators", slug: "refrigerators" },
-      { name: "Washing Machines", slug: "washing-machines" },
-      { name: "Kitchen Appliances", slug: "kitchen-appliances" },
-    ],
-  },
-  {
-    name: "Books", slug: "books",
-    children: [
-      { name: "Fiction", slug: "fiction" },
-      { name: "Non-Fiction", slug: "non-fiction" },
-      { name: "Children's Books", slug: "childrens-books" },
-    ],
-  },
-  {
-    name: "Toys & Kids", slug: "toys-kids",
-    children: [
-      { name: "Toys & Games", slug: "toys-games" },
-      { name: "Kids Clothing", slug: "kids-clothing" },
-      { name: "Baby Care", slug: "baby-care" },
-      { name: "School Supplies", slug: "school-supplies" },
-    ],
-  },
-];
-
-// ---------- Brands ----------
-const BRANDS: { name: string; slug: string }[] = [
-  "Samsung", "Apple", "OnePlus", "Xiaomi", "Realme", "Sony", "boAt", "JBL",
-  "HP", "Dell", "Lenovo", "Asus", "Acer", "Nike", "Adidas", "Puma", "Levi's",
-  "Titan", "Fastrack", "Nestlé", "Amul", "Tata", "Prestige", "LG", "Whirlpool",
-  "Bosch", "Canon", "Nikon", "Penguin", "HarperCollins", "American Tourister",
-  "Wildcraft", "Philips", "Bajaj",
-  "Lego", "Hot Wheels", "Funskool", "Mattel", "Pampers", "Johnson's", "Chicco",
-].map((name) => ({
-  name,
-  slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""),
-}));
-
-// ---------- Products ----------
-// [name, subcategorySlug, brandSlug, priceRupees, discountPercent, color, trending?]
-type P = [string, string, string | null, number, number, string | null, boolean?];
-const PRODUCTS: P[] = [
-  // Mobiles
-  ["Samsung Galaxy S24 Ultra", "mobiles", "samsung", 124999, 12, "black", true],
-  ["Samsung Galaxy S24", "mobiles", "samsung", 74999, 10, "black", true],
-  ["Samsung Galaxy A55 5G", "mobiles", "samsung", 39999, 8, "blue"],
-  ["Apple iPhone 15 Pro Max", "mobiles", "apple", 159900, 5, "titanium", true],
-  ["Apple iPhone 15", "mobiles", "apple", 79900, 6, "blue", true],
-  ["Apple iPhone 14", "mobiles", "apple", 69900, 9, "midnight"],
-  ["OnePlus 12 5G", "mobiles", "oneplus", 64999, 11, "green", true],
-  ["OnePlus Nord CE4", "mobiles", "oneplus", 24999, 10, "gray"],
-  ["Xiaomi 14 Pro", "mobiles", "xiaomi", 49999, 15, "black"],
-  ["Redmi Note 13 Pro+", "mobiles", "xiaomi", 31999, 14, "purple"],
-  ["Realme 12 Pro+ 5G", "mobiles", "realme", 29999, 13, "blue"],
-  ["Realme Narzo 70", "mobiles", "realme", 15999, 12, "green"],
-  // Laptops
-  ["Apple MacBook Air M3", "laptops", "apple", 114900, 7, "silver", true],
-  ["Apple MacBook Pro 14 M3", "laptops", "apple", 169900, 5, "space-gray"],
-  ["HP Pavilion 15", "laptops", "hp", 62999, 18, "silver"],
-  ["HP Victus Gaming", "laptops", "hp", 71999, 16, "black", true],
-  ["Dell Inspiron 15", "laptops", "dell", 54999, 20, "black"],
-  ["Dell XPS 13", "laptops", "dell", 129999, 10, "silver"],
-  ["Lenovo IdeaPad Slim 5", "laptops", "lenovo", 58999, 17, "gray"],
-  ["Lenovo Legion 5 Pro", "laptops", "lenovo", 139999, 12, "black", true],
-  ["Asus ROG Strix G16", "laptops", "asus", 154999, 9, "black"],
-  ["Asus VivoBook 15", "laptops", "asus", 44999, 22, "blue"],
-  ["Acer Aspire 7", "laptops", "acer", 49999, 19, "black"],
-  // Headphones
-  ["Sony WH-1000XM5", "headphones", "sony", 29990, 15, "black", true],
-  ["Sony WF-1000XM5 Buds", "headphones", "sony", 24990, 12, "black"],
-  ["boAt Rockerz 450", "headphones", "boat", 1499, 40, "blue", true],
-  ["boAt Airdopes 141", "headphones", "boat", 1299, 55, "white", true],
-  ["JBL Tune 770NC", "headphones", "jbl", 8999, 25, "black"],
-  ["JBL Flip 6 Speaker", "headphones", "jbl", 9999, 20, "teal"],
-  ["Apple AirPods Pro 2", "headphones", "apple", 24900, 8, "white", true],
-  // Cameras
-  ["Canon EOS R50 Mirrorless", "cameras", "canon", 67999, 10, "black"],
-  ["Canon EOS 1500D DSLR", "cameras", "canon", 38999, 14, "black"],
-  ["Nikon Z30 Vlogging Kit", "cameras", "nikon", 61999, 11, "black"],
-  ["Nikon D3500 DSLR", "cameras", "nikon", 41999, 13, "black"],
-  ["Sony Alpha ZV-E10", "cameras", "sony", 58999, 9, "black", true],
-  // Smart Watches
-  ["Apple Watch Series 9", "smart-watches", "apple", 41900, 6, "midnight", true],
-  ["Samsung Galaxy Watch 6", "smart-watches", "samsung", 29999, 15, "graphite"],
-  ["boAt Wave Call 2", "smart-watches", "boat", 1599, 50, "black", true],
-  ["Fastrack Reflex Play+", "smart-watches", "fastrack", 2495, 35, "black"],
-  ["Titan Smart 2", "smart-watches", "titan", 4995, 28, "silver"],
-  // Men's Clothing
-  ["Levi's 511 Slim Jeans", "mens-clothing", "levi-s", 3299, 30, "blue", true],
-  ["Levi's Cotton Crew Tee", "mens-clothing", "levi-s", 999, 40, "white"],
-  ["Nike Dri-FIT T-Shirt", "mens-clothing", "nike", 1495, 25, "black"],
-  ["Adidas Essentials Hoodie", "mens-clothing", "adidas", 2999, 35, "gray"],
-  ["Puma Track Jacket", "mens-clothing", "puma", 2499, 38, "navy"],
-  ["Puma Graphic Tee", "mens-clothing", "puma", 899, 45, "red"],
-  // Women's Clothing
-  ["Levi's High-Rise Jeans", "womens-clothing", "levi-s", 3499, 32, "blue"],
-  ["Nike Sportswear Leggings", "womens-clothing", "nike", 2295, 20, "black", true],
-  ["Adidas Running Tee", "womens-clothing", "adidas", 1799, 30, "pink"],
-  ["Puma Active Shorts", "womens-clothing", "puma", 1299, 35, "gray"],
-  // Footwear
-  ["Nike Air Max 270", "footwear", "nike", 12995, 20, "white", true],
-  ["Nike Revolution 7", "footwear", "nike", 4995, 30, "black"],
-  ["Adidas Ultraboost Light", "footwear", "adidas", 15999, 18, "black", true],
-  ["Adidas Grand Court", "footwear", "adidas", 4599, 33, "white"],
-  ["Puma Smash V2", "footwear", "puma", 3499, 40, "white"],
-  ["Puma Softride Runner", "footwear", "puma", 3999, 35, "blue"],
-  // Watches
-  ["Titan Neo Analog", "watches", "titan", 4995, 25, "silver"],
-  ["Fastrack Stunners", "watches", "fastrack", 2295, 35, "black"],
-  ["Titan Edge Slim", "watches", "titan", 12995, 15, "gold"],
-  // Bags & Backpacks
-  ["American Tourister Backpack 32L", "bags-backpacks", "american-tourister", 2499, 45, "blue", true],
-  ["Wildcraft Trekking Rucksack 45L", "bags-backpacks", "wildcraft", 3499, 30, "green"],
-  ["American Tourister Cabin Trolley", "bags-backpacks", "american-tourister", 6999, 40, "red"],
-  ["Wildcraft Laptop Backpack", "bags-backpacks", "wildcraft", 1999, 35, "black"],
-  // Furniture
-  ["Sheesham Wood 3-Seater Sofa", "furniture", null, 34999, 25, "brown", true],
-  ["Engineered Wood Study Table", "furniture", null, 6999, 30, "walnut"],
-  ["Ergonomic Office Chair", "furniture", null, 8999, 35, "black", true],
-  ["Queen Size Bed with Storage", "furniture", null, 24999, 22, "brown"],
-  ["Bookshelf 5-Tier", "furniture", null, 4999, 28, "oak"],
-  ["Foldable Dining Table Set", "furniture", null, 15999, 20, "brown"],
-  // Kitchen & Dining
-  ["Prestige Induction Cooktop", "kitchen-dining", "prestige", 3499, 30, "black", true],
-  ["Prestige Non-Stick Cookware Set", "kitchen-dining", "prestige", 2999, 35, "black"],
-  ["Stainless Steel Dinner Set 24pc", "kitchen-dining", "tata", 3999, 25, "silver"],
-  ["Bajaj Mixer Grinder 750W", "kitchen-dining", "bajaj", 3299, 32, "white"],
-  ["Borosilicate Glass Jar Set", "kitchen-dining", null, 1299, 40, "clear"],
-  // Home Decor
-  ["Abstract Canvas Wall Art", "home-decor", null, 1999, 45, "multi"],
-  ["LED String Lights 10m", "home-decor", null, 599, 50, "warm"],
-  ["Ceramic Table Vase", "home-decor", null, 899, 38, "white"],
-  ["Cotton Area Rug 5x7", "home-decor", null, 3499, 30, "beige"],
-  // Bedding
-  ["Cotton King Bedsheet Set", "bedding", null, 1799, 40, "blue", true],
-  ["Microfiber Pillow Pack of 2", "bedding", null, 999, 45, "white"],
-  ["Reversible AC Comforter", "bedding", null, 2499, 35, "gray"],
-  // Staples
-  ["Tata Sampann Toor Dal 1kg", "staples", "tata", 199, 10, null],
-  ["Aashirvaad Atta 5kg", "staples", "tata", 299, 8, null, true],
-  ["Fortune Sunflower Oil 1L", "staples", null, 179, 12, null],
-  ["Daawat Basmati Rice 5kg", "staples", null, 649, 15, null],
-  // Snacks & Beverages
-  ["Nestlé Maggi Noodles 12-Pack", "snacks-beverages", "nestle", 168, 12, null, true],
-  ["Nestlé KitKat Pack of 10", "snacks-beverages", "nestle", 250, 15, null],
-  ["Amul Dark Chocolate 150g", "snacks-beverages", "amul", 120, 10, null],
-  ["Tata Tea Gold 500g", "snacks-beverages", "tata", 275, 14, null],
-  ["Amul Cheese Cubes 200g", "snacks-beverages", "amul", 145, 8, null],
-  // Personal Care
-  ["Philips Beard Trimmer", "personal-care", "philips", 1495, 35, "black", true],
-  ["Philips Hair Dryer 1200W", "personal-care", "philips", 1299, 30, "pink"],
-  ["Dove Body Wash 800ml", "personal-care", null, 499, 25, null],
-  // Televisions
-  ["Sony Bravia 55\" 4K OLED", "televisions", "sony", 139900, 18, "black", true],
-  ["Samsung Crystal 50\" 4K UHD", "televisions", "samsung", 44999, 30, "black", true],
-  ["LG 43\" Full HD Smart TV", "televisions", "lg", 32999, 28, "black"],
-  ["Xiaomi Smart TV X 55", "televisions", "xiaomi", 38999, 25, "black"],
-  // Refrigerators
-  ["LG 260L Double Door Fridge", "refrigerators", "lg", 27999, 22, "silver", true],
-  ["Samsung 253L Frost-Free", "refrigerators", "samsung", 26999, 20, "gray"],
-  ["Whirlpool 190L Single Door", "refrigerators", "whirlpool", 15999, 25, "blue"],
-  ["Bosch 288L Double Door", "refrigerators", "bosch", 33999, 18, "steel"],
-  // Washing Machines
-  ["LG 7kg Front Load Washer", "washing-machines", "lg", 32999, 20, "white", true],
-  ["Samsung 6.5kg Top Load", "washing-machines", "samsung", 15999, 25, "gray"],
-  ["Bosch 7kg Front Load", "washing-machines", "bosch", 29999, 22, "silver"],
-  ["Whirlpool 7.5kg Top Load", "washing-machines", "whirlpool", 17999, 24, "white"],
-  // Kitchen Appliances
-  ["Bajaj 1.8L Electric Kettle", "kitchen-appliances", "bajaj", 899, 40, "steel"],
-  ["Philips Air Fryer 4.1L", "kitchen-appliances", "philips", 8999, 30, "black", true],
-  ["Prestige 6L Pressure Cooker", "kitchen-appliances", "prestige", 1799, 28, "silver"],
-  ["Bajaj OTG 16L Oven", "kitchen-appliances", "bajaj", 3499, 32, "black"],
-  // Fiction
-  ["The Silent Patient", "fiction", "harpercollins", 399, 30, null],
-  ["It Ends With Us", "fiction", "penguin", 299, 35, null, true],
-  ["The Alchemist", "fiction", "harpercollins", 350, 25, null, true],
-  ["A Court of Thorns and Roses", "fiction", "penguin", 499, 28, null],
-  // Non-Fiction
-  ["Atomic Habits", "non-fiction", "penguin", 599, 40, null, true],
-  ["Ikigai", "non-fiction", "penguin", 299, 33, null],
-  ["Sapiens: A Brief History", "non-fiction", "harpercollins", 699, 30, null],
-  ["Rich Dad Poor Dad", "non-fiction", "penguin", 349, 38, null],
-  // Children's Books
-  ["The Very Hungry Caterpillar", "childrens-books", "penguin", 250, 30, null],
-  ["Wings of Fire (Set)", "childrens-books", "harpercollins", 999, 35, null],
-  ["Amar Chitra Katha Collection", "childrens-books", null, 1499, 40, null, true],
-  // Toys & Games
-  ["Lego Classic Creative Bricks", "toys-games", "lego", 2999, 25, "multi", true],
-  ["Lego City Police Station", "toys-games", "lego", 5999, 20, "multi"],
-  ["Hot Wheels 20-Car Gift Pack", "toys-games", "hot-wheels", 1499, 30, "multi", true],
-  ["Hot Wheels Track Builder Set", "toys-games", "hot-wheels", 1999, 28, "orange"],
-  ["Funskool Giant Jenga", "toys-games", "funskool", 899, 35, "brown"],
-  ["Mattel UNO Card Game", "toys-games", "mattel", 299, 40, "multi", true],
-  ["Barbie Dreamhouse Doll", "toys-games", "mattel", 3499, 22, "pink"],
-  ["Remote Control Racing Car", "toys-games", "funskool", 1799, 33, "red"],
-  // Kids Clothing
-  ["Kids Cotton T-Shirt Pack of 3", "kids-clothing", null, 799, 40, "multi", true],
-  ["Boys Denim Dungaree", "kids-clothing", null, 1199, 35, "blue"],
-  ["Girls Floral Frock", "kids-clothing", null, 999, 38, "pink"],
-  ["Kids Winter Hoodie", "kids-clothing", null, 1299, 30, "gray"],
-  // Baby Care
-  ["Pampers Diapers Pants (M, 72)", "baby-care", "pampers", 1399, 20, null, true],
-  ["Johnson's Baby Care Gift Set", "baby-care", "johnson-s", 899, 25, null],
-  ["Chicco Baby Feeding Bottle 250ml", "baby-care", "chicco", 449, 30, null],
-  ["Chicco Baby Stroller", "baby-care", "chicco", 8999, 18, "gray", true],
-  // School Supplies
-  ["Kids School Backpack", "school-supplies", null, 899, 40, "blue", true],
-  ["Geometry Box Set", "school-supplies", null, 199, 35, null],
-  ["Crayons & Sketch Pens Combo", "school-supplies", null, 349, 45, "multi"],
-  ["Insulated Steel Lunch Box", "school-supplies", null, 599, 30, "green"],
-];
-
-async function main() {
-  // 1. Super admin.
-  const superAdminPhone = process.env.SUPER_ADMIN_PHONE;
-  if (superAdminPhone) {
-    const p = superAdminPhone.length === 10 ? `91${superAdminPhone}` : superAdminPhone;
-    await prisma.user.upsert({
-      where: { phone: p },
-      create: { phone: p, name: "Super Admin", role: "SUPER_ADMIN" },
-      update: { role: "SUPER_ADMIN" },
-    });
-    console.log(`Super admin set: ${p}`);
-  }
-
-  // 2. Categories (parent + children). Build slug -> id map.
-  const catId: Record<string, string> = {};
-  for (const parent of CATEGORY_TREE) {
-    const pc = await prisma.category.upsert({
-      where: { slug: parent.slug },
-      create: { name: parent.name, slug: parent.slug, image: catImage(parent.slug) },
-      update: { image: catImage(parent.slug) },
-    });
-    catId[parent.slug] = pc.id;
-    for (const child of parent.children) {
-      const cc = await prisma.category.upsert({
-        where: { slug: child.slug },
-        create: { name: child.name, slug: child.slug, parentId: pc.id, image: catImage(child.slug) },
-        update: { parentId: pc.id, image: catImage(child.slug) },
-      });
-      catId[child.slug] = cc.id;
-    }
-  }
-  console.log(`Categories ready: ${Object.keys(catId).length}`);
-
-  // 3. Brands.
-  const brandId: Record<string, string> = {};
-  for (const b of BRANDS) {
-    const created = await prisma.brand.upsert({
-      where: { slug: b.slug },
-      create: { name: b.name, slug: b.slug },
-      update: {},
-    });
-    brandId[b.slug] = created.id;
-  }
-  console.log(`Brands ready: ${Object.keys(brandId).length}`);
-
-  // 4. Products — slugify name, skip if categoryId unknown, upsert on slug.
-  let created = 0;
-  for (const [name, catSlug, brandSlug, priceRupees, discount, color, trending] of PRODUCTS) {
-    const categoryId = catId[catSlug];
-    if (!categoryId) {
-      console.warn(`Skip "${name}" — unknown category ${catSlug}`);
-      continue;
-    }
-    const slug = name
-      .toLowerCase()
-      .replace(/["']/g, "")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)/g, "");
-    const bId = brandSlug ? brandId[brandSlug] ?? null : null;
-
-    await prisma.product.upsert({
-      where: { slug },
-      create: {
-        name, slug,
-        description: `${name} — premium quality at the best price on Shivani Mart. Genuine product with warranty and fast pan-India delivery.`,
-        pricePaise: Math.round(priceRupees * 100),
-        discountPercent: discount,
-        stock: 20 + Math.floor(Math.random() * 180),
-        color: color ?? undefined,
-        categoryId,
-        brandId: bId ?? undefined,
-        isTrending: !!trending,
-        images: productImages(catSlug),
+      {
+        name: "Mobiles",
+        item: "Smartphone",
+        price: [7999, 79999],
+        variants: ["64GB", "128GB", "256GB", "512GB"],
+        about: "A everyday smartphone with a bright display, all-day battery and a clean camera setup.",
       },
-      update: {
-        pricePaise: Math.round(priceRupees * 100),
-        discountPercent: discount,
-        categoryId,
-        brandId: bId ?? undefined,
-        isTrending: !!trending,
-        // Re-seed pe purani (picsum) images ko real Unsplash se replace karo.
-        images: productImages(catSlug),
+      {
+        name: "Laptops",
+        item: "Laptop",
+        price: [28999, 129999],
+        variants: ["8GB RAM", "16GB RAM", "32GB RAM"],
+        about: "A thin and light laptop built for work, study and long hours away from a charger.",
       },
-    });
-    created++;
-  }
-  console.log(`Products upserted: ${created}`);
+      {
+        name: "Headphones",
+        item: "Headphones",
+        price: [699, 24999],
+        variants: ["Wireless", "Wired", "Noise Cancelling"],
+        about: "Comfortable over-ear sound with deep bass and a microphone that people can actually hear.",
+      },
+      {
+        name: "Smart Watches",
+        item: "Smart Watch",
+        price: [1299, 34999],
+        variants: ["41mm", "45mm", "GPS", "LTE"],
+        about: "Tracks steps, sleep and heart rate, and keeps notifications on your wrist instead of your pocket.",
+      },
+      {
+        name: "Televisions",
+        item: "LED TV",
+        price: [12999, 149999],
+        variants: ["32 inch", "43 inch", "55 inch", "65 inch"],
+        about: "A smart TV with sharp contrast and built-in apps, ready to use straight out of the box.",
+      },
+    ],
+  },
+  {
+    name: "Fashion",
+    children: [
+      {
+        name: "T-Shirts",
+        item: "T-Shirt",
+        price: [349, 2499],
+        variants: ["Regular Fit", "Slim Fit", "Oversized"],
+        about: "Soft combed cotton that keeps its shape and colour even after a full season of washing.",
+        gender: "Unisex",
+        ageGroup: "Adult",
+      },
+      {
+        name: "Shirts",
+        item: "Shirt",
+        price: [699, 4999],
+        variants: ["Full Sleeve", "Half Sleeve", "Linen"],
+        about: "A crisp everyday shirt that works for the office on weekdays and dinner on weekends.",
+        gender: "Men",
+        ageGroup: "Adult",
+      },
+      {
+        name: "Jeans",
+        item: "Jeans",
+        price: [899, 5999],
+        variants: ["Slim Fit", "Straight Fit", "Relaxed Fit"],
+        about: "Stretchable denim that holds its shape through long days of sitting, walking and travelling.",
+        gender: "Men",
+        ageGroup: "Adult",
+      },
+      {
+        name: "Kurtas",
+        item: "Kurta",
+        price: [599, 6999],
+        variants: ["Cotton", "Silk Blend", "Rayon"],
+        about: "A breathable festive kurta with clean stitching and a fit that stays comfortable all day.",
+        gender: "Women",
+        ageGroup: "Adult",
+      },
+      {
+        name: "Sarees",
+        item: "Saree",
+        price: [999, 24999],
+        variants: ["Banarasi", "Georgette", "Cotton Silk"],
+        about: "A wedding-ready saree with a woven border and a matching unstitched blouse piece.",
+        gender: "Women",
+        ageGroup: "Adult",
+      },
+      {
+        name: "Dresses",
+        item: "Dress",
+        price: [799, 7999],
+        variants: ["Midi", "Maxi", "A-Line"],
+        about: "A party dress with a flattering drape that needs no ironing after it comes out of the bag.",
+        gender: "Women",
+        ageGroup: "Adult",
+      },
+    ],
+  },
+  {
+    name: "Footwear",
+    children: [
+      {
+        name: "Sports Shoes",
+        item: "Running Shoes",
+        price: [999, 12999],
+        variants: ["UK 6", "UK 7", "UK 8", "UK 9", "UK 10"],
+        about: "Cushioned running shoes with a breathable mesh upper and a grip that holds on wet roads.",
+        gender: "Unisex",
+        ageGroup: "Adult",
+      },
+      {
+        name: "Formal Shoes",
+        item: "Formal Shoes",
+        price: [1299, 9999],
+        variants: ["UK 6", "UK 7", "UK 8", "UK 9"],
+        about: "Genuine leather formals with a soft footbed, made for long days on your feet.",
+        gender: "Men",
+        ageGroup: "Adult",
+      },
+      {
+        name: "Sandals",
+        item: "Sandals",
+        price: [399, 3499],
+        variants: ["UK 6", "UK 7", "UK 8", "UK 9"],
+        about: "Lightweight everyday sandals with a non-slip sole and straps that do not cut into your feet.",
+        gender: "Unisex",
+        ageGroup: "Adult",
+      },
+      {
+        name: "Sneakers",
+        item: "Sneakers",
+        price: [899, 8999],
+        variants: ["UK 6", "UK 7", "UK 8", "UK 9", "UK 10"],
+        about: "Everyday sneakers that go with jeans, shorts and the walk to the metro station.",
+        gender: "Unisex",
+        ageGroup: "Adult",
+      },
+    ],
+  },
+  {
+    name: "Home & Kitchen",
+    children: [
+      {
+        name: "Cookware",
+        item: "Cookware Set",
+        price: [499, 12999],
+        variants: ["2 Piece", "3 Piece", "5 Piece"],
+        about: "Even-heating base that works on gas and induction, with handles that stay cool to hold.",
+      },
+      {
+        name: "Storage",
+        item: "Storage Box",
+        price: [199, 3999],
+        variants: ["Small", "Medium", "Large"],
+        about: "Stackable airtight containers that keep the kitchen shelf tidy and the snacks fresh.",
+      },
+      {
+        name: "Bedsheets",
+        item: "Bedsheet",
+        price: [399, 4999],
+        variants: ["Single", "Double", "King"],
+        about: "Soft cotton bedsheet with two pillow covers, pre-shrunk so the fit stays right.",
+      },
+      {
+        name: "Lighting",
+        item: "LED Lamp",
+        price: [249, 5999],
+        variants: ["Warm White", "Cool White", "Smart"],
+        about: "Flicker-free light that is easy on the eyes during late-night study or work.",
+      },
+    ],
+  },
+  {
+    name: "Beauty",
+    children: [
+      {
+        name: "Skincare",
+        item: "Face Cream",
+        price: [199, 3499],
+        variants: ["50ml", "100ml", "200ml"],
+        about: "Lightweight daily moisturiser that absorbs fast and does not leave a greasy film.",
+      },
+      {
+        name: "Haircare",
+        item: "Hair Oil",
+        price: [149, 2499],
+        variants: ["100ml", "200ml", "400ml"],
+        about: "Nourishing blend for dry scalp and frizz, with a light scent that fades quickly.",
+      },
+      {
+        name: "Fragrances",
+        item: "Perfume",
+        price: [399, 8999],
+        variants: ["50ml", "100ml"],
+        about: "Long-lasting fragrance with a fresh opening that settles into a warm base.",
+      },
+    ],
+  },
+  {
+    name: "Sports",
+    children: [
+      {
+        name: "Fitness",
+        item: "Dumbbell Set",
+        price: [499, 14999],
+        variants: ["5kg", "10kg", "20kg"],
+        about: "Rubber-coated weights that protect the floor and stay quiet in a flat.",
+        gender: "Unisex",
+        ageGroup: "Adult",
+      },
+      {
+        name: "Cricket",
+        item: "Cricket Bat",
+        price: [799, 19999],
+        variants: ["Size 5", "Size 6", "Full Size"],
+        about: "Kashmir willow bat with a thick edge and a grip that survives a full season.",
+        gender: "Unisex",
+      },
+      {
+        name: "Cycling",
+        item: "Cycle",
+        price: [4999, 49999],
+        variants: ["26 inch", "27.5 inch", "29 inch"],
+        about: "Steel frame cycle with dual disc brakes, built for city roads and weekend trails.",
+        gender: "Unisex",
+      },
+    ],
+  },
+  {
+    name: "Kids",
+    children: [
+      {
+        name: "Kids Clothing",
+        item: "Kids T-Shirt",
+        price: [249, 1999],
+        variants: ["2-3 Years", "4-5 Years", "6-7 Years", "8-9 Years"],
+        about: "Skin-friendly cotton with prints that survive playground afternoons and the washing machine.",
+        gender: "Unisex",
+        ageGroup: "Kids",
+      },
+      {
+        name: "Toys",
+        item: "Building Blocks",
+        price: [199, 4999],
+        variants: ["50 Pieces", "100 Pieces", "200 Pieces"],
+        about: "Smooth-edged blocks that keep small hands busy and do not hurt when stepped on.",
+        ageGroup: "Kids",
+      },
+      {
+        name: "Kids Footwear",
+        item: "Kids Shoes",
+        price: [349, 2999],
+        variants: ["UK 10", "UK 11", "UK 12", "UK 1"],
+        about: "Velcro shoes kids can wear on their own, with a sole that grips on school corridors.",
+        gender: "Unisex",
+        ageGroup: "Kids",
+      },
+    ],
+  },
+];
 
-  // 5. Banners (promo carousel).
-  const banners = [
-    { image: uns(BANNER_IDS[0], 1400, "&h=460"), link: "/products?categoryId=" + catId["electronics"], position: 1 },
-    { image: uns(BANNER_IDS[1], 1400, "&h=460"), link: "/products?categoryId=" + catId["fashion"], position: 2 },
-    { image: uns(BANNER_IDS[2], 1400, "&h=460"), link: "/products?categoryId=" + catId["appliances"], position: 3 },
-    { image: uns(BANNER_IDS[3], 1400, "&h=460"), link: "/products?categoryId=" + catId["toys-kids"], position: 4 },
-    { image: uns(BANNER_IDS[4], 1400, "&h=460"), link: "/products?categoryId=" + catId["books"], position: 5 },
-  ];
-  // Purane (picsum) banners replace karo — real wide images daalo.
-  await prisma.banner.deleteMany({});
-  await prisma.banner.createMany({ data: banners });
-  console.log(`Banners set: ${banners.length}`);
+// Brand ke naam banaye hue hain — asli trademark portfolio project me nahi daalte.
+const BRANDS = [
+  "Voltro", "Nexora", "Urbanite", "Kestrel", "Maruvi", "Zentra", "Auralis", "Nordfell",
+  "Trikon", "Bluewick", "Sahara Mills", "Ironpeak", "Lumora", "Cascade", "Vireo",
+  "Rasika", "Tanvi", "Orbell", "Stonefield", "Glimr", "Panther Lab", "Kavach",
+  "Moonbay", "Everloom", "Silverline",
+] as const;
 
-  const totalProducts = await prisma.product.count();
-  console.log(`Seed complete. Total products in DB: ${totalProducts}`);
+// DB me colour Title Case me rehta hai — catalog ka filter isi par chalta hai.
+const COLORS = [
+  "Black", "White", "Navy Blue", "Red", "Grey", "Beige", "Olive Green",
+  "Maroon", "Mustard", "Sky Blue", "Pink", "Brown",
+] as const;
 
-  // 6. Redis data-cache invalidate — warna home/categories purana data dikhayenge.
-  try {
-    const { default: Redis } = await import("ioredis");
-    const r = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", { lazyConnect: true });
-    await r.connect();
-    const keys = await r.keys("*");
-    const targets = keys.filter(
-      (k) => k === "home:data" || k === "categories:tree" || k === "brands:all" || k.startsWith("product:")
-    );
-    if (targets.length) await r.del(...targets);
-    r.disconnect();
-    console.log(`Cache cleared: ${targets.length} keys`);
-  } catch {
-    console.log("Cache clear skipped (Redis unavailable) — TTL will expire.");
+const MODELS = [
+  "Nova", "Pulse", "Aero", "Prime", "Edge", "Flux", "Astra", "Vertex", "Drift",
+  "Crest", "Onyx", "Halo", "Terra", "Swift", "Lumen", "Arc", "Zen", "Bolt",
+] as const;
+
+const FIRST_NAMES = [
+  "Ankit", "Priya", "Rahul", "Sneha", "Vikas", "Anjali", "Rohit", "Pooja", "Amit",
+  "Neha", "Sandeep", "Kavita", "Manish", "Divya", "Arjun", "Meera", "Suresh",
+  "Ritu", "Naveen", "Shreya",
+] as const;
+
+const LAST_NAMES = [
+  "Pandey", "Sharma", "Verma", "Gupta", "Singh", "Yadav", "Mishra", "Joshi",
+  "Nair", "Reddy", "Patel", "Das",
+] as const;
+
+const CITIES = [
+  { city: "Varanasi", state: "Uttar Pradesh", pin: "221001" },
+  { city: "Lucknow", state: "Uttar Pradesh", pin: "226001" },
+  { city: "Ghazipur", state: "Uttar Pradesh", pin: "233001" },
+  { city: "Patna", state: "Bihar", pin: "800001" },
+  { city: "Delhi", state: "Delhi", pin: "110001" },
+  { city: "Jaipur", state: "Rajasthan", pin: "302001" },
+  { city: "Pune", state: "Maharashtra", pin: "411001" },
+  { city: "Bengaluru", state: "Karnataka", pin: "560001" },
+  { city: "Hyderabad", state: "Telangana", pin: "500001" },
+  { city: "Indore", state: "Madhya Pradesh", pin: "452001" },
+] as const;
+
+const REVIEW_LINES = [
+  "Exactly what the photos showed. Happy with the quality.",
+  "Good for the price. Delivery was quicker than expected.",
+  "Quality is decent but the size runs a little small.",
+  "Using it for two weeks now, no complaints so far.",
+  "Packaging was solid and nothing was damaged.",
+  "Works well, though the finish could have been better.",
+  "Worth the money. Would order from this brand again.",
+  "Average product. Does the job but nothing special.",
+  "Better than what I paid for. Recommended.",
+  "Delivery was late but the product itself is fine.",
+] as const;
+
+const TOTAL_PRODUCTS = 1500;
+const TOTAL_USERS = 60;
+const TOTAL_ORDERS = 900;
+const BATCH = 1000;
+const SUPER_ADMIN_PHONE = "6392061026";
+
+// ---------------------------------------------------------------------------
+// Purana data hatao — seed dobara chalane par duplicate na banein.
+// Kram FK ke hisaab se hai: pehle bachche, phir maa-baap.
+// ---------------------------------------------------------------------------
+async function clearAll() {
+  await prisma.review.deleteMany();
+  await prisma.productView.deleteMany();
+  await prisma.orderItem.deleteMany();
+  await prisma.order.deleteMany();
+  await prisma.cartItem.deleteMany();
+  await prisma.cart.deleteMany();
+  await prisma.address.deleteMany();
+  await prisma.session.deleteMany();
+  await prisma.webhookEvent.deleteMany();
+  await prisma.product.deleteMany();
+  await prisma.banner.deleteMany();
+  await prisma.brand.deleteMany();
+  await prisma.category.deleteMany();
+  await prisma.user.deleteMany();
+}
+
+// Bade list ko 1000-1000 ke tukdon me daalo — ek saath 1500 row bhejne par
+// query bahut lambi ho jaati hai.
+async function insertInBatches<T>(rows: T[], insert: (chunk: T[]) => Promise<unknown>) {
+  for (let i = 0; i < rows.length; i += BATCH) {
+    await insert(rows.slice(i, i + BATCH));
   }
 }
 
+async function main() {
+  console.log("Purana data hata rahe hain...");
+  await clearAll();
+
+  // ---------------- Category + Subcategory ----------------
+  const parentRows = [];
+  const childRows = [];
+  // Product banate waqt kaam aayega: har subcategory ka id + uska dhancha.
+  const subCategories: { id: string; child: Child }[] = [];
+
+  for (const parent of CATALOG) {
+    const parentId = randomUUID();
+    parentRows.push({
+      id: parentId,
+      name: parent.name,
+      slug: slugify(parent.name),
+      image: imageUrl(slugify(parent.name), 0),
+      parentId: null,
+    });
+
+    for (const child of parent.children) {
+      const childId = randomUUID();
+      childRows.push({
+        id: childId,
+        name: child.name,
+        slug: slugify(child.name),
+        image: imageUrl(slugify(child.name), 0),
+        parentId,
+      });
+      subCategories.push({ id: childId, child });
+    }
+  }
+
+  await prisma.category.createMany({ data: parentRows });
+  await prisma.category.createMany({ data: childRows });
+  console.log(`Category: ${parentRows.length} parent + ${childRows.length} subcategory`);
+
+  // ---------------- Brand ----------------
+  const brandRows = BRANDS.map((name) => ({
+    id: randomUUID(),
+    name,
+    slug: slugify(name),
+    logo: imageUrl(slugify(name), 0),
+  }));
+  await prisma.brand.createMany({ data: brandRows });
+  console.log(`Brand: ${brandRows.length}`);
+
+  // ---------------- Product ----------------
+  // Har subcategory me barabar products, bacha hua pehli subcategory me.
+  const perCategory = Math.floor(TOTAL_PRODUCTS / subCategories.length);
+  const usedSlugs = new Set<string>();
+  const products = [];
+
+  for (let c = 0; c < subCategories.length; c++) {
+    const { id: categoryId, child } = subCategories[c];
+    const count = c === 0 ? perCategory + (TOTAL_PRODUCTS % subCategories.length) : perCategory;
+
+    for (let i = 0; i < count; i++) {
+      const brand = pick(brandRows);
+      const model = pick(MODELS);
+      const variant = pick(child.variants);
+      const color = pick(COLORS);
+      const series = between(2, 9);
+
+      const name = `${brand.name} ${model} ${series} ${child.item} ${variant}`;
+      let slug = slugify(name);
+      // Naam kabhi-kabhi repeat ho jaata hai — slug unique hona zaroori hai.
+      if (usedSlugs.has(slug)) slug = `${slug}-${products.length}`;
+      usedSlugs.add(slug);
+
+      const rupees = between(child.price[0], child.price[1]);
+      // ...99 par khatam hone wale daam asli lagte hain.
+      const pricePaise = (Math.floor(rupees / 100) * 100 + 99) * 100;
+
+      // 45% products par discount. Unme se kuch par deadline bhi.
+      const discountPercent = chance(45) ? between(5, 60) : 0;
+      const offerEndsAt = discountPercent > 0 && chance(35) ? daysFromNow(between(2, 45)) : null;
+      const sellPaise = pricePaise - Math.round((pricePaise * discountPercent) / 100);
+
+      // Teeno stock status dikhen: out of stock, kam bacha, aur normal.
+      const stock = chance(6) ? 0 : chance(12) ? between(1, 5) : between(10, 250);
+
+      products.push({
+        id: randomUUID(),
+        name,
+        slug,
+        description: `${child.about} This ${child.item.toLowerCase()} comes in ${color.toLowerCase()} with the ${variant} option, packed and shipped by ${brand.name}.`,
+        pricePaise,
+        discountPercent,
+        sellPaise,
+        offerEndsAt,
+        stock,
+        color,
+        gender: child.gender ?? null,
+        ageGroup: child.ageGroup ?? null,
+        images: [imageUrl(slug, 1), imageUrl(slug, 2), imageUrl(slug, 3)],
+        categoryId,
+        brandId: brand.id,
+        isActive: !chance(3), // kuch products chhupe hue, taki admin ka hide/unhide dikhe
+        isTrending: chance(8),
+        isFeatured: chance(8),
+        ratingSum: 0,
+        ratingCount: 0,
+        ratingAverage: 0,
+      });
+    }
+  }
+
+  // ---------------- User + Address ----------------
+  const users = [];
+  const addresses = [];
+  const usedPhones = new Set<string>([SUPER_ADMIN_PHONE]);
+
+  users.push({
+    id: randomUUID(),
+    phone: SUPER_ADMIN_PHONE,
+    name: "Ankit Pandey",
+    email: "admin@apnakart.test",
+    role: "SUPER_ADMIN" as const,
+  });
+
+  while (users.length < TOTAL_USERS) {
+    const phone = `${pick([6, 7, 8, 9])}${String(between(100000000, 999999999))}`;
+    if (usedPhones.has(phone)) continue;
+    usedPhones.add(phone);
+
+    const first = pick(FIRST_NAMES);
+    const last = pick(LAST_NAMES);
+    users.push({
+      id: randomUUID(),
+      phone,
+      name: `${first} ${last}`,
+      email: chance(60) ? `${first.toLowerCase()}.${last.toLowerCase()}${users.length}@example.com` : null,
+      role: "USER" as const,
+    });
+  }
+
+  for (const user of users) {
+    const howMany = chance(35) ? 2 : 1;
+    for (let i = 0; i < howMany; i++) {
+      const place = pick(CITIES);
+      addresses.push({
+        id: randomUUID(),
+        userId: user.id,
+        fullName: user.name ?? "Customer",
+        phone: user.phone,
+        line1: `${between(1, 240)}, ${pick(["Gandhi Road", "Station Road", "MG Marg", "Civil Lines", "Nehru Nagar"])}`,
+        line2: chance(50) ? `Near ${pick(["City Mall", "Post Office", "Bus Stand", "Govt School"])}` : null,
+        city: place.city,
+        state: place.state,
+        pincode: place.pin,
+        isDefault: i === 0,
+      });
+    }
+  }
+
+  // ---------------- Order + OrderItem ----------------
+  // Har status ka order banao, taki admin panel aur "my orders" dono bharey dikhen.
+  const orders = [];
+  const orderItems = [];
+  // Review sirf DELIVERED order wale customer de sakta hai — wahi jodi yahan yaad rakhte hain.
+  const deliveredPairs: { userId: string; productId: string }[] = [];
+  const liveProducts = products.filter((p) => p.isActive);
+  // Har store me kuch products zyada bikte hain. Isi wajah se unpar reviews bhi zyada
+  // aati hain aur baaki par kam — bilkul waise jaise asli catalog me hota hai.
+  const popular = liveProducts.slice(0, 400);
+
+  for (let i = 0; i < TOTAL_ORDERS; i++) {
+    const user = pick(users);
+    const userAddresses = addresses.filter((a) => a.userId === user.id);
+    const address = pick(userAddresses);
+
+    const status = pick(["DELIVERED", "DELIVERED", "DELIVERED", "SHIPPED", "CONFIRMED", "PENDING", "CANCELLED"] as const);
+    const paymentMethod = chance(55) ? ("ONLINE" as const) : ("COD" as const);
+
+    // COD par paisa delivery pe milta hai; online par pay hone ke baad hi COMPLETED.
+    const paymentStatus =
+      paymentMethod === "COD"
+        ? status === "DELIVERED"
+          ? ("COMPLETED" as const)
+          : ("PENDING" as const)
+        : status === "PENDING" || status === "CANCELLED"
+          ? ("PENDING" as const)
+          : ("COMPLETED" as const);
+
+    const orderId = randomUUID();
+    const createdAt = daysAgo(between(1, 120));
+
+    let totalPaise = 0;
+    const howManyItems = between(1, 4);
+    const chosen = new Set<string>();
+
+    for (let j = 0; j < howManyItems; j++) {
+      const product = chance(45) ? pick(popular) : pick(liveProducts);
+      if (chosen.has(product.id)) continue;
+      chosen.add(product.id);
+
+      const quantity = between(1, 3);
+      const pricePaise = product.sellPaise;
+      totalPaise += pricePaise * quantity;
+
+      orderItems.push({
+        id: randomUUID(),
+        orderId,
+        productId: product.id,
+        productName: product.name,
+        productImage: product.images[0],
+        pricePaise,
+        quantity,
+      });
+
+      if (status === "DELIVERED") deliveredPairs.push({ userId: user.id, productId: product.id });
+    }
+
+    orders.push({
+      id: orderId,
+      userId: user.id,
+      idempotencyKey: `seed-${i}-${orderId.slice(0, 8)}`,
+      addressId: address.id,
+      shipName: address.fullName,
+      shipPhone: address.phone,
+      shipLine1: address.line1,
+      shipLine2: address.line2,
+      shipCity: address.city,
+      shipState: address.state,
+      shipPincode: address.pincode,
+      totalPaise,
+      status,
+      paymentStatus,
+      paymentMethod,
+      paymentExpiresAt:
+        paymentMethod === "ONLINE" && status === "PENDING" ? daysFromNow(0.02) : null,
+      razorpayOrderId: paymentMethod === "ONLINE" ? `order_seed${i}${orderId.slice(0, 6)}` : null,
+      razorpayPaymentId: paymentMethod === "ONLINE" && paymentStatus === "COMPLETED" ? `pay_seed${i}` : null,
+      createdAt,
+      updatedAt: createdAt,
+    });
+  }
+
+  // ---------------- Review ----------------
+  // Sirf delivered wali jodi se, aur ek user ek product par ek hi baar.
+  const reviews = [];
+  const reviewed = new Set<string>();
+  const ratingByProduct = new Map<string, { sum: number; count: number }>();
+
+  for (const pair of deliveredPairs) {
+    const key = `${pair.productId}:${pair.userId}`;
+    if (reviewed.has(key)) continue;
+    // Har khareedar review nahi likhta.
+    if (!chance(65)) continue;
+    reviewed.add(key);
+
+    // Zyadatar log 4-5 dete hain, kuch kam.
+    const rating = chance(70) ? between(4, 5) : between(2, 3);
+    const createdAt = daysAgo(between(1, 60));
+
+    reviews.push({
+      id: randomUUID(),
+      productId: pair.productId,
+      userId: pair.userId,
+      rating,
+      comment: chance(80) ? pick(REVIEW_LINES) : null,
+      createdAt,
+      updatedAt: createdAt,
+    });
+
+    const current = ratingByProduct.get(pair.productId) ?? { sum: 0, count: 0 };
+    ratingByProduct.set(pair.productId, { sum: current.sum + rating, count: current.count + 1 });
+  }
+
+  // Rating product row par likhi jaati hai (har card par AVG() na chale).
+  // Isliye product insert karne se PEHLE asli reviews se ginti bhar dete hain.
+  for (const product of products) {
+    const found = ratingByProduct.get(product.id);
+    if (!found) continue;
+    product.ratingSum = found.sum;
+    product.ratingCount = found.count;
+    product.ratingAverage = found.sum / found.count;
+  }
+
+  // ---------------- Banner ----------------
+  const banners = [
+    { text: "Festive Sale", link: "/catalog?discount=true" },
+    { text: "New Arrivals", link: "/catalog?sort=latest" },
+    { text: "Trending Now", link: "/catalog?section=trending" },
+    { text: "Electronics Deals", link: "/catalog?category=electronics" },
+    { text: "Fashion Under 999", link: "/catalog?category=fashion&maxPricePaise=99900" },
+    { text: "Kids Corner", link: "/catalog?category=kids" },
+  ].map((banner, i) => ({
+    id: randomUUID(),
+    image: imageUrl(slugify(banner.text), 0),
+    link: banner.link,
+    position: i,
+    isActive: true,
+  }));
+
+  // ---------------- Sab DB me daalo ----------------
+  await insertInBatches(products, (chunk) => prisma.product.createMany({ data: chunk }));
+  console.log(`Product: ${products.length}`);
+
+  await insertInBatches(users, (chunk) => prisma.user.createMany({ data: chunk }));
+  await insertInBatches(addresses, (chunk) => prisma.address.createMany({ data: chunk }));
+  console.log(`User: ${users.length} (address: ${addresses.length})`);
+
+  await insertInBatches(orders, (chunk) => prisma.order.createMany({ data: chunk }));
+  await insertInBatches(orderItems, (chunk) => prisma.orderItem.createMany({ data: chunk }));
+  console.log(`Order: ${orders.length} (item: ${orderItems.length})`);
+
+  await insertInBatches(reviews, (chunk) => prisma.review.createMany({ data: chunk }));
+  console.log(`Review: ${reviews.length}`);
+
+  await prisma.banner.createMany({ data: banners });
+  console.log(`Banner: ${banners.length}`);
+
+  console.log(`\nSeed poora hua. Admin login: ${SUPER_ADMIN_PHONE}`);
+}
+
 main()
-  .catch((e) => {
-    console.error(e);
+  .catch((error) => {
+    console.error("Seed fail hua:", error);
     process.exit(1);
   })
   .finally(() => prisma.$disconnect());

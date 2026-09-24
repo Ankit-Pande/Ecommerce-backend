@@ -1,21 +1,11 @@
 import { Router } from "express";
-import {
-  listAddresses,
-  createAddress,
-  updateAddress,
-  deleteAddress,
-} from "../controller/address.controller";
+import { createAddress, deleteAddress, listAddresses, updateAddress } from "../controller/address.controller";
 import { authCheck } from "../middleware/authCheck";
 import { validate } from "../middleware/validate";
-import {
-  createAddressSchema,
-  updateAddressSchema,
-  addressIdSchema,
-} from "../validation/address.validation";
+import { addressIdSchema, createAddressSchema, updateAddressSchema } from "../validation/address.validation";
 
 const router = Router();
 
-// Sab login-protected (apna hi address dikhe/badle).
 router.use(authCheck);
 
 router.get("/", listAddresses);

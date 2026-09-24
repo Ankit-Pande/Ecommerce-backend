@@ -1,108 +1,139 @@
-import { prisma } from "../config/db";
+import { Prisma } from "@prisma/client";
+import { prisma, lockUser } from "../config/db";
 import { AppError } from "../utils/appError";
+import { ACTIVE_CATEGORY, effectiveDiscount, finalPrice, stockStatus } from "../utils/price";
 
-// Cart hamesha live product price/stock ke saath bheja jaata hai (cart me purana
-// price store nahi — checkout pe order me snapshot lega).
-export const cartService = {
-  // User ka cart laao (na ho to bana do). Items + live product info ek saath.
-  async getCart(userId: string) {
-    const cart = await prisma.cart.upsert({
-      where: { userId },
-      create: { userId },
-      update: {},
-      select: {
-        id: true,
-        items: {
-          select: {
-            quantity: true,
-            product: {
-              select: {
-                id: true,
-                name: true,
-                slug: true,
-                description: true, // checkout summary short description ke liye
-                color: true, // checkout me color chip dikhta hai
-                categoryId: true, // cart/checkout "You may also like" suggestions ke liye
-                pricePaise: true,
-                discountPercent: true,
-                images: true,
-                stock: true,
-                isActive: true,
-              },
+const MAX_QTY = 10;
+// Alag-alag product ki limit — checkout ka transaction itne hi items par chalta hai.
+const MAX_ITEMS = 50;
+
+// Cart me price store nahi hota — har baar live price/stock ke saath banta hai.
+// Hidden/out-of-stock item cart me dikhta hai (hataya ja sake) par total me nahi judta.
+async function getCart(userId: string) {
+  const cart = await prisma.cart.findUnique({
+    where: { userId },
+    select: {
+      items: {
+        orderBy: { createdAt: "desc" },
+        select: {
+          quantity: true,
+          product: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              color: true,
+              images: true,
+              pricePaise: true,
+              discountPercent: true,
+              offerEndsAt: true,
+              stock: true,
+              isActive: true,
+              category: { select: { isActive: true, parent: { select: { isActive: true } } } },
             },
           },
-          orderBy: { createdAt: "desc" },
         },
       },
-    });
+    },
+  });
 
-    // Inactive/deleted products cart se hata ke dikhao (ganda data na dikhe).
-    const items = cart.items.filter((i) => i.product.isActive);
-    const totalPaise = items.reduce((sum, i) => {
-      const price = i.product.pricePaise;
-      const discounted = price - Math.round((price * i.product.discountPercent) / 100);
-      return sum + discounted * i.quantity;
-    }, 0);
+  let totalPaise = 0;
+  const items = (cart?.items ?? []).map(({ quantity, product }) => {
+    const isAvailable =
+      product.isActive && product.category.isActive && product.category.parent?.isActive !== false;
+    const maxQuantity = Math.min(MAX_QTY, product.stock);
+    const finalPricePaise = finalPrice(product.pricePaise, product.discountPercent, product.offerEndsAt);
+    if (isAvailable && quantity <= maxQuantity) totalPaise += finalPricePaise * quantity;
 
-    return { items, totalPaise };
-  },
+    return {
+      quantity,
+      product: {
+        id: product.id,
+        name: product.name,
+        slug: product.slug,
+        color: product.color,
+        images: product.images,
+        pricePaise: product.pricePaise,
+        discountPercent: effectiveDiscount(product.discountPercent, product.offerEndsAt),
+        finalPricePaise,
+        stockStatus: stockStatus(product.stock),
+        maxQuantity,
+        isAvailable,
+      },
+    };
+  });
 
-  // Add — pehle se ho to quantity badhao (duplicate row nahi, @@unique se safe).
+  return { items, totalPaise };
+}
+
+// Product public hai aur itna stock hai ya nahi.
+async function checkStock(tx: Prisma.TransactionClient, productId: string, quantity: number) {
+  const product = await tx.product.findFirst({
+    where: { id: productId, isActive: true, category: ACTIVE_CATEGORY },
+    select: { stock: true },
+  });
+  if (!product) throw new AppError("Product unavailable", 404);
+  if (quantity > MAX_QTY || quantity > product.stock) {
+    throw new AppError("Quantity exceeds stock or maximum 10 units", 409);
+  }
+}
+
+export const cartService = {
+  getCart,
+
+  // Pehle se cart me hai to quantity judti hai (duplicate row nahi).
   async addItem(userId: string, productId: string, quantity: number) {
-    const product = await prisma.product.findFirst({
-      where: { id: productId, isActive: true },
-      select: { stock: true },
-    });
-    if (!product) throw new AppError("Product not found", 404);
-    if (product.stock < quantity) throw new AppError("Not enough stock", 400);
+    await prisma.$transaction(async (tx) => {
+      await lockUser(tx, userId);
+      const cart = await tx.cart.upsert({ where: { userId }, create: { userId }, update: {} });
+      const existing = await tx.cartItem.findUnique({
+        where: { cartId_productId: { cartId: cart.id, productId } },
+      });
+      if (!existing) {
+        const items = await tx.cartItem.count({ where: { cartId: cart.id } });
+        if (items >= MAX_ITEMS) {
+          throw new AppError(`Cart can hold ${MAX_ITEMS} different products. Remove one first.`, 400);
+        }
+      }
+      const total = (existing?.quantity ?? 0) + quantity;
+      await checkStock(tx, productId, total);
 
-    const cart = await prisma.cart.upsert({
-      where: { userId },
-      create: { userId },
-      update: {},
-      select: { id: true },
+      await tx.cartItem.upsert({
+        where: { cartId_productId: { cartId: cart.id, productId } },
+        create: { cartId: cart.id, productId, quantity },
+        update: { quantity: total },
+      });
     });
-
-    await prisma.cartItem.upsert({
-      where: { cartId_productId: { cartId: cart.id, productId } },
-      create: { cartId: cart.id, productId, quantity },
-      update: { quantity: { increment: quantity } },
-    });
-
-    return this.getCart(userId);
+    return getCart(userId);
   },
 
-  // Quantity set karo (badhao/ghatao). Stock check.
+  // Quantity seedha set (+/- button).
   async updateItem(userId: string, productId: string, quantity: number) {
-    const product = await prisma.product.findFirst({
-      where: { id: productId, isActive: true },
-      select: { stock: true },
+    await prisma.$transaction(async (tx) => {
+      await lockUser(tx, userId);
+      await checkStock(tx, productId, quantity);
+      const changed = await tx.cartItem.updateMany({
+        where: { productId, cart: { userId } },
+        data: { quantity },
+      });
+      if (changed.count === 0) throw new AppError("Item not in cart", 404);
     });
-    if (!product) throw new AppError("Product not found", 404);
-    if (product.stock < quantity) throw new AppError("Not enough stock", 400);
-
-    const cart = await prisma.cart.findUnique({
-      where: { userId },
-      select: { id: true },
-    });
-    if (!cart) throw new AppError("Cart not found", 404);
-
-    await prisma.cartItem.update({
-      where: { cartId_productId: { cartId: cart.id, productId } },
-      data: { quantity },
-    });
-
-    return this.getCart(userId);
+    return getCart(userId);
   },
 
   async removeItem(userId: string, productId: string) {
-    const cart = await prisma.cart.findUnique({
-      where: { userId },
-      select: { id: true },
+    await prisma.$transaction(async (tx) => {
+      await lockUser(tx, userId);
+      await tx.cartItem.deleteMany({ where: { productId, cart: { userId } } });
     });
-    if (!cart) throw new AppError("Cart not found", 404);
+    return getCart(userId);
+  },
 
-    await prisma.cartItem.deleteMany({ where: { cartId: cart.id, productId } });
-    return this.getCart(userId);
+  async clearCart(userId: string) {
+    await prisma.$transaction(async (tx) => {
+      await lockUser(tx, userId);
+      await tx.cartItem.deleteMany({ where: { cart: { userId } } });
+    });
+    return { items: [], totalPaise: 0 };
   },
 };

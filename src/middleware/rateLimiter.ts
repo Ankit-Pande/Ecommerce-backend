@@ -1,81 +1,47 @@
 import { RequestHandler } from "express";
-import { redis } from "../config/redis";
+import { countHit } from "../config/redis";
 import { logger } from "../config/winston";
 import { AppError } from "../utils/appError";
 
-// Generic reusable rate limiter (IP + named bucket).
-// 'bucket' fixed string lo (route ka naam), req.path NAHI — warna dynamic params
-// (/user/123 vs /user/456) alag keys bana ke limit bypass ho jaati hai.
-// Use: rateLimiter({ bucket: "login", windowSec: 60, max: 5 })
-interface RateLimiterOptions {
-  bucket: string;
+interface RateLimitOptions {
+  bucket: string; // route ka fixed naam — req.path nahi, warna /x/1 aur /x/2 alag gine jaate
   windowSec: number;
   max: number;
+  // Redis down ho to: true = request jaane do, false = rok do.
+  // Browsing par true (site chalti rahe), OTP/payment par false (bina limit ke na chalein).
+  allowOnRedisDown?: boolean;
 }
 
-export function rateLimiter(options: RateLimiterOptions): RequestHandler {
+// IPv6 me ek user ke paas poora /64 hota hai (crores addresses). Poora address ginoge to
+// har request naya dikhega aur limit bekaar ho jaayegi — isliye pehle 4 group tak hi gino.
+// "::" wala chhota roop pehle khola jaata hai, warna 2001:db8::1 jaisa address bina kate nikal jaata.
+function ipKey(ip: string): string {
+  // Node kabhi-kabhi IPv4 ko "::ffff:1.2.3.4" bhejta hai — wo IPv4 hi hai.
+  if (ip.startsWith("::ffff:")) return ip.slice(7);
+  if (!ip.includes(":")) return ip;
+
+  if (!ip.includes("::")) return ip.split(":").slice(0, 4).join(":");
+
+  const [head, tail = ""] = ip.split("::");
+  const headParts = head ? head.split(":") : [];
+  const tailParts = tail ? tail.split(":") : [];
+  const zeros = Math.max(8 - headParts.length - tailParts.length, 0);
+  return [...headParts, ...Array(zeros).fill("0"), ...tailParts].slice(0, 4).join(":");
+}
+
+// Login user ko userId se gino (ek hi WiFi ke log ek doosre ki limit na khayein), baaki IP se.
+// Redis down: poori API wali limit request jaane deti hai, OTP/checkout jaisi limit rok deti hai.
+export function rateLimiter({ bucket, windowSec, max, allowOnRedisDown }: RateLimitOptions): RequestHandler {
   return async (req, _res, next) => {
     try {
-      const clientId = req.ip || "unknown";
-      const key = `rate:${options.bucket}:${clientId}`;
-
-      const count = await redis.incr(key);
-      if (count === 1) {
-        await redis.expire(key, options.windowSec);
-      }
-
-      if (count > options.max) {
-        return next(
-          new AppError("Too many requests, please try again later.", 429)
-        );
-      }
-
-      return next();
+      const who = req.user?.userId ?? ipKey(req.ip ?? "unknown");
+      const count = await countHit(`rate:${bucket}:${who}`, windowSec);
+      if (count > max) return next(new AppError("Too many requests, please try again later.", 429));
+      next();
     } catch (error) {
-      // Redis down -> request block mat karo (fail-open). Log karke aage jaane do.
-      logger.error("Rate limiter error", { error });
-      return next();
+      logger.error("Rate limiter error", { error, bucket });
+      if (allowOnRedisDown) return next();
+      next(new AppError("Service busy. Please try again shortly.", 503));
     }
   };
 }
-
-// OTP-specific IP limiter: 30 OTP / hour -> 30 min block.
-// (Phone-based limit otp.service me: 60s cooldown + 3 OTP / 10 min.)
-const OTP_IP_MAX = 30;
-const OTP_IP_WINDOW = 60 * 60; // 1 hour
-const OTP_IP_BLOCK = 30 * 60; // 30 min
-
-export const otpIpLimiter: RequestHandler = async (req, _res, next) => {
-  try {
-    const ip = req.ip || "unknown";
-    const blockKey = `otp:ipblock:${ip}`;
-    const countKey = `otp:ipcount:${ip}`;
-
-    if (await redis.get(blockKey)) {
-      return next(
-        new AppError(
-          "Too many OTP requests from your network. Try again after 30 minutes",
-          429
-        )
-      );
-    }
-
-    const count = await redis.incr(countKey);
-    if (count === 1) await redis.expire(countKey, OTP_IP_WINDOW);
-
-    if (count > OTP_IP_MAX) {
-      await redis.set(blockKey, "1", "EX", OTP_IP_BLOCK);
-      return next(
-        new AppError(
-          "Too many OTP requests from your network. Try again after 30 minutes",
-          429
-        )
-      );
-    }
-
-    return next();
-  } catch (error) {
-    logger.error("OTP IP limiter error", { error });
-    return next();
-  }
-};

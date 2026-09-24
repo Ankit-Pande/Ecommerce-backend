@@ -1,27 +1,24 @@
 import { z } from "zod";
+import { idParams, phone } from "./common";
 
-// Indian pincode = 6 digit. Phone = 10 digit.
-const pincode = z.string().regex(/^[1-9][0-9]{5}$/, "Invalid pincode");
-const phone = z.string().regex(/^[6-9][0-9]{9}$/, "Invalid phone number");
-
-export const createAddressSchema = z.object({
-  body: z.object({
+const addressBody = z
+  .object({
     fullName: z.string().trim().min(2).max(80),
     phone,
     line1: z.string().trim().min(3).max(150),
     line2: z.string().trim().max(150).optional(),
     city: z.string().trim().min(2).max(60),
     state: z.string().trim().min(2).max(60),
-    pincode,
+    pincode: z.string().regex(/^[1-9]\d{5}$/, "Invalid pincode"),
     isDefault: z.boolean().optional(),
-  }),
-});
+  })
+  .strict();
+
+export const createAddressSchema = z.object({ body: addressBody });
 
 export const updateAddressSchema = z.object({
-  params: z.object({ id: z.string().uuid() }),
-  body: createAddressSchema.shape.body.partial(),
+  params: idParams,
+  body: addressBody.partial(),
 });
 
-export const addressIdSchema = z.object({
-  params: z.object({ id: z.string().uuid() }),
-});
+export const addressIdSchema = z.object({ params: idParams });

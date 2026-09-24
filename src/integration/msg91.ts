@@ -1,54 +1,33 @@
 import { env } from "../config/env";
-import { AppError } from "../utils/appError";
 import { logger } from "../config/winston";
+import { AppError } from "../utils/appError";
 
-const isProd = env.NODE_ENV === "production";
-
-// MSG91 OTP API (India DLT-compliant, template-based).
-// Dev me actual SMS nahi bhejte — OTP log kar dete hain (testing free + fast).
-// Prod me MSG91 template endpoint hit hota hai.
-//
-// Phone E.164 ke bina (e.g. "919876543210") MSG91 expect karta hai —
-// smsService cleanup + country code handle karta hai.
-export const sendOtpSms = async (
-  mobile: string,
-  otp: string
-): Promise<void> => {
-  if (!isProd) {
+// MSG91 OTP (DLT template). Local/dev me SMS nahi jaata, OTP log me dikhta hai.
+// mobile = 10 digit; MSG91 ko 91 ke saath chahiye.
+export async function sendOtpSms(mobile: string, otp: string): Promise<void> {
+  if (env.NODE_ENV !== "production") {
     logger.info(`DEV OTP -> ${mobile}: ${otp}`);
     return;
   }
 
+  const params = new URLSearchParams({
+    template_id: env.MSG91_OTP_TEMPLATE_ID as string,
+    sender: env.MSG91_SENDER_ID as string,
+    mobile: `91${mobile}`,
+    otp,
+  });
+
   try {
-    const url = "https://control.msg91.com/api/v5/otp";
-    const params = new URLSearchParams({
-      template_id: env.MSG91_OTP_TEMPLATE_ID as string,
-      mobile,
-      otp,
-      sender: env.MSG91_SENDER_ID as string,
-    });
-
-    const res = await fetch(`${url}?${params.toString()}`, {
+    const res = await fetch(`https://control.msg91.com/api/v5/otp?${params}`, {
       method: "POST",
-      headers: {
-        authkey: env.MSG91_AUTH_KEY as string,
-        "Content-Type": "application/json",
-      },
+      headers: { authkey: env.MSG91_AUTH_KEY as string },
+      signal: AbortSignal.timeout(10000),
     });
-
-    const data = (await res.json()) as { type?: string; message?: string };
-
-    if (!res.ok || data.type !== "success") {
-      logger.error("MSG91 OTP send failed", { status: res.status, data });
-      throw new AppError("Failed to send OTP", 503);
-    }
-
-    logger.info(`OTP sent to ${mobile}`);
+    const data = (await res.json()) as { type?: string };
+    if (res.ok && data.type === "success") return;
+    logger.error("MSG91 failed", { status: res.status, data });
   } catch (error) {
-    if (error instanceof AppError) throw error;
-    logger.error("MSG91 error", {
-      error: error instanceof Error ? error.message : error,
-    });
-    throw new AppError("Failed to send OTP", 503);
+    logger.error("MSG91 error", { error });
   }
-};
+  throw new AppError("Failed to send OTP", 503);
+}

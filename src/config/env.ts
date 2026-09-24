@@ -1,55 +1,70 @@
 import "dotenv/config";
 import { z } from "zod";
 
-const isProd = process.env.NODE_ENV === "production";
+// NODE_ENV na diya ho to production maano — galti se dev mode (khula CORS,
+// SMS ki jagah log) live server pe na chal jaye.
+const isProd = (process.env.NODE_ENV ?? "production") === "production";
 
-// Saari env ek jagah validate. Galat/missing pe app start hi nahi hoga (fail-fast).
-// Third-party keys (MSG91/Razorpay/Cloudinary) dev me optional, prod me must.
-const schema = z.object({
-  NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-  PORT: z.coerce.number().int().positive().default(8000),
-  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+// Third-party keys production me zaroori, local par optional.
+const neededInProd = isProd ? z.string().min(1) : z.string().optional();
 
-  DATABASE_URL: z.string().url("Invalid Database URL format"),
-  DIRECT_URL: z.string().url("Invalid Direct Database URL format").optional(),
-  REDIS_URL: z.string().url("Invalid Redis URL format"),
+// Saari env ek jagah check. Galat ya missing ho to app start hi nahi hogi.
+const schema = z
+  .object({
+    NODE_ENV: z.enum(["development", "production", "test"]).default("production"),
+    PORT: z.coerce.number().int().positive().default(8000),
+    LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+    TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(1),
+    API_RATE_MAX: z.coerce.number().int().positive().default(300),
 
-  FRONTEND_ORIGINS: z.string().min(1, "Frontend origin is required"),
+    DATABASE_URL: z.string().url("Invalid DATABASE_URL"),
+    DIRECT_URL: z.string().url("Invalid DIRECT_URL"),
+    REDIS_URL: z.string().url("Invalid REDIS_URL"),
 
-  // Pehla super admin (seed script isi number ko SUPER_ADMIN banata hai).
-  SUPER_ADMIN_PHONE: z.string().optional(),
+    FRONTEND_ORIGINS: z.string().min(1, "FRONTEND_ORIGINS is required"),
+    SUPER_ADMIN_PHONE: z
+      .string()
+      .regex(/^[6-9]\d{9}$/)
+      .optional(),
 
-  // JWT — header-based auth (web + Android same). Koi cookie/CSRF nahi.
-  JWT_ACCESS_SECRET: z.string().min(32, "Access secret must be at least 32 chars"),
-  JWT_REFRESH_SECRET: z.string().min(32, "Refresh secret must be at least 32 chars"),
-  JWT_ACCESS_EXPIRY: z.string().default("15m"),
-  JWT_REFRESH_EXPIRY: z.string().default("30d"),
+    JWT_ACCESS_SECRET: z.string().min(32, "JWT_ACCESS_SECRET must be at least 32 chars"),
+    JWT_REFRESH_SECRET: z.string().min(32, "JWT_REFRESH_SECRET must be at least 32 chars"),
+    OTP_SECRET: z.string().min(32, "OTP_SECRET must be at least 32 chars"),
+    JWT_ACCESS_EXPIRY: z
+      .string()
+      .regex(/^[1-9]\d*[smhd]$/)
+      .default("15m"),
 
-  // MSG91 — OTP SMS (India standard).
-  MSG91_AUTH_KEY: isProd ? z.string().min(1) : z.string().optional(),
-  MSG91_SENDER_ID: isProd ? z.string().min(1) : z.string().optional(),
-  MSG91_OTP_TEMPLATE_ID: isProd ? z.string().min(1) : z.string().optional(),
+    MSG91_AUTH_KEY: neededInProd,
+    MSG91_SENDER_ID: neededInProd,
+    MSG91_OTP_TEMPLATE_ID: neededInProd,
+    DAILY_SMS_CAP: z.coerce.number().int().positive().default(2000),
 
-  // Cloudinary — product/category/banner images.
-  CLOUDINARY_CLOUD_NAME: isProd ? z.string().min(1) : z.string().optional(),
-  CLOUDINARY_API_KEY: isProd ? z.string().min(1) : z.string().optional(),
-  CLOUDINARY_API_SECRET: isProd ? z.string().min(1) : z.string().optional(),
+    CLOUDINARY_CLOUD_NAME: neededInProd,
+    CLOUDINARY_API_KEY: neededInProd,
+    CLOUDINARY_API_SECRET: neededInProd,
 
-  // Gemini — AI assistant (embeddings + chat). Optional: key nahi to lite mode
-  // (full-text search + template replies chalte hain, semantic/LLM skip).
-  GEMINI_API_KEY: z.string().optional(),
-
-  // Razorpay — order payment.
-  RAZORPAY_KEY_ID: isProd ? z.string().min(1) : z.string().optional(),
-  RAZORPAY_KEY_SECRET: isProd ? z.string().min(1) : z.string().optional(),
-  RAZORPAY_WEBHOOK_SECRET: isProd ? z.string().min(1) : z.string().optional(),
-});
+    RAZORPAY_KEY_ID: neededInProd,
+    RAZORPAY_KEY_SECRET: neededInProd,
+    RAZORPAY_WEBHOOK_SECRET: neededInProd,
+    CHECKOUT_URL: isProd ? z.string().url() : z.string().url().default("http://localhost:3000/checkout"),
+    PAYMENT_WINDOW_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
+    MAX_PENDING_ORDERS: z.coerce.number().int().min(1).max(10).default(2),
+  })
+  .refine(
+    (v) => new Set([v.JWT_ACCESS_SECRET, v.JWT_REFRESH_SECRET, v.OTP_SECRET]).size === 3,
+    "JWT_ACCESS_SECRET, JWT_REFRESH_SECRET and OTP_SECRET must be different",
+  )
+  .refine(
+    (v) => v.NODE_ENV !== "production" || !/localhost|127\.0\.0\.1/.test(v.FRONTEND_ORIGINS),
+    "FRONTEND_ORIGINS cannot point at localhost in production",
+  );
 
 const parsed = schema.safeParse(process.env);
 
 if (!parsed.success) {
   console.error("Invalid environment variables:");
-  console.error(parsed.error.flatten().fieldErrors);
+  console.error(parsed.error.flatten());
   process.exit(1);
 }
 

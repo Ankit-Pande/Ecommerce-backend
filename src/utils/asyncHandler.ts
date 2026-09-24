@@ -1,14 +1,10 @@
 import { NextFunction, Request, RequestHandler, Response } from "express";
 
-// Async controller wrapper — try/catch baar baar nahi. Reject/throw -> error middleware.
-type AsyncFunction = (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => Promise<void>;
+type AsyncController = (req: Request, res: Response, next: NextFunction) => Promise<void>;
 
-export function asyncHandler(fn: AsyncFunction): RequestHandler {
+// Async controller ki error seedha error middleware tak — har jagah try/catch nahi.
+export function asyncHandler(fn: AsyncController): RequestHandler {
   return (req, res, next) => {
-    Promise.resolve(fn(req, res, next)).catch(next);
+    fn(req, res, next).catch(next);
   };
 }

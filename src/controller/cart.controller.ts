@@ -8,28 +8,21 @@ export const getCart = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const addToCart = asyncHandler(async (req: Request, res: Response) => {
-  const { productId, quantity } = req.body;
-  const cart = await cartService.addItem(req.user!.userId, productId, quantity);
+  const cart = await cartService.addItem(req.user!.userId, req.body.productId, req.body.quantity);
   res.json({ success: true, data: cart });
 });
 
-export const updateCartItem = asyncHandler(
-  async (req: Request, res: Response) => {
-    const cart = await cartService.updateItem(
-      req.user!.userId,
-      req.params.productId,
-      req.body.quantity
-    );
-    res.json({ success: true, data: cart });
-  }
-);
+export const updateCartItem = asyncHandler(async (req: Request, res: Response) => {
+  const cart = await cartService.updateItem(req.user!.userId, req.params.productId, req.body.quantity);
+  res.json({ success: true, data: cart });
+});
 
-export const removeCartItem = asyncHandler(
-  async (req: Request, res: Response) => {
-    const cart = await cartService.removeItem(
-      req.user!.userId,
-      req.params.productId
-    );
-    res.json({ success: true, data: cart });
-  }
-);
+export const removeCartItem = asyncHandler(async (req: Request, res: Response) => {
+  const cart = await cartService.removeItem(req.user!.userId, req.params.productId);
+  res.json({ success: true, data: cart });
+});
+
+export const clearCart = asyncHandler(async (req: Request, res: Response) => {
+  const cart = await cartService.clearCart(req.user!.userId);
+  res.json({ success: true, data: cart });
+});

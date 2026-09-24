@@ -1,14 +1,10 @@
 import { RequestHandler } from "express";
 import { ZodSchema } from "zod";
 
-// Zod schema runner. body/query/params teeno validate (parseAsync -> async refine support).
-// Validation fail pe raw ZodError next ko jaata hai -> error.ts use clean 400 me convert karta hai.
-type ParsedRequestData = {
-  body?: unknown;
-  query?: unknown;
-  params?: unknown;
-};
+type ParsedRequest = { body?: unknown; query?: unknown; params?: unknown };
 
+// Zod se body/query/params check. Parsed (trim/coerce hua) data wapas req pe —
+// services isi par bharosa karti hain, dobara check nahi karti.
 export function validate(schema: ZodSchema): RequestHandler {
   return async (req, _res, next) => {
     try {
@@ -16,15 +12,16 @@ export function validate(schema: ZodSchema): RequestHandler {
         body: req.body,
         query: req.query,
         params: req.params,
-      })) as ParsedRequestData;
+      })) as ParsedRequest;
 
-      if (parsed.body) req.body = parsed.body;
-      if (parsed.query) req.query = parsed.query as typeof req.query;
-      if (parsed.params) req.params = parsed.params as typeof req.params;
-
-      return next();
+      if (parsed.body !== undefined) req.body = parsed.body;
+      // Express 4 me req.query normal property hai. Express 5 me getter-only ho jaati hai —
+      // upgrade karo to ye line badalni padegi.
+      if (parsed.query !== undefined) req.query = parsed.query as typeof req.query;
+      if (parsed.params !== undefined) Object.assign(req.params, parsed.params);
+      next();
     } catch (error) {
-      return next(error);
+      next(error);
     }
   };
 }

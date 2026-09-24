@@ -1,21 +1,36 @@
 import { z } from "zod";
+import { csv, idParams, page, uuid } from "./common";
 
-// Checkout — cart se order banta hai. Sirf delivery address chahiye.
+const orderStatus = z.enum(["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"]);
+
+// idempotencyKey: frontend har checkout click pe ek hi key bhejta hai —
+// double click / retry pe dusra order nahi banta.
 export const checkoutSchema = z.object({
-  body: z.object({
-    addressId: z.string().uuid(),
-    // COD = delivery pe cash, ONLINE = Razorpay (UPI/card/netbanking).
-    paymentMethod: z.enum(["COD", "ONLINE"]).default("ONLINE"),
-  }),
+  body: z
+    .object({
+      idempotencyKey: z.string().min(8).max(100),
+      addressId: uuid,
+      paymentMethod: z.enum(["COD", "ONLINE"]).default("ONLINE"),
+    })
+    .strict(),
 });
 
-export const orderIdSchema = z.object({
-  params: z.object({ id: z.string().uuid() }),
+export const verifyPaymentSchema = z.object({
+  body: z
+    .object({
+      razorpayOrderId: z.string().min(1).max(100),
+      razorpayPaymentId: z.string().min(1).max(100),
+      signature: z.string().min(1).max(200),
+    })
+    .strict(),
 });
 
+export const orderIdSchema = z.object({ params: idParams });
+
+// "In progress" tab ek se zyada status maangta hai: ?status=PENDING,CONFIRMED
 export const listOrderSchema = z.object({
   query: z.object({
-    cursor: z.string().uuid().optional(),
-    limit: z.coerce.number().int().min(1).max(50).default(20),
+    status: csv(orderStatus, 5).optional(),
+    ...page(),
   }),
 });

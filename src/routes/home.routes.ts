@@ -3,7 +3,7 @@ import { getHome } from "../controller/home.controller";
 
 const router = Router();
 
-// Public — home page ka pura data ek API me.
+// Public — home page ka saara data ek call me.
 router.get("/", getHome);
 
 export const homeRoutes = router;

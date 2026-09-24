@@ -1,19 +1,18 @@
 import { z } from "zod";
+import { uuid } from "./common";
+
+// Ek product max 10 piece.
+const quantity = z.coerce.number().int().min(1).max(10);
 
 export const addToCartSchema = z.object({
-  body: z.object({
-    productId: z.string().uuid(),
-    quantity: z.coerce.number().int().min(1).max(10).default(1),
-  }),
+  body: z.object({ productId: uuid, quantity: quantity.default(1) }).strict(),
 });
 
 export const updateCartItemSchema = z.object({
-  params: z.object({ productId: z.string().uuid() }),
-  body: z.object({
-    quantity: z.coerce.number().int().min(1).max(10),
-  }),
+  params: z.object({ productId: uuid }),
+  body: z.object({ quantity }).strict(),
 });
 
 export const cartItemParamSchema = z.object({
-  params: z.object({ productId: z.string().uuid() }),
+  params: z.object({ productId: uuid }),
 });

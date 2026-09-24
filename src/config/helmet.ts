@@ -1,4 +1,4 @@
 import helmet from "helmet";
 
-// Security headers (XSS, clickjacking, etc). Default config is API ke liye kaafi hai.
+// Security headers. JSON API ke liye default config kaafi hai.
 export const helmetConfig = helmet();
