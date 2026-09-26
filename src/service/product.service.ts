@@ -143,10 +143,11 @@ export const productService = {
   },
 
   // Har minute (server.ts): khatam hue offer ka discount 0 aur sellPaise = MRP,
-  // taaki catalog ka price filter/sort sahi rahe.
+  // taaki catalog ka price filter/sort sahi rahe. Purani date bhi hatao — warna admin
+  // agla discount bina nayi date ke lagaye to wo beeti date ki wajah se turant mar jaata.
   async expireOffers() {
     const changed = await prisma.$executeRaw`
-      UPDATE "Product" SET "discountPercent" = 0, "sellPaise" = "pricePaise"
+      UPDATE "Product" SET "discountPercent" = 0, "sellPaise" = "pricePaise", "offerEndsAt" = NULL
       WHERE "discountPercent" > 0 AND "offerEndsAt" <= NOW()`;
     if (changed > 0) await bumpStorefrontCache();
   },

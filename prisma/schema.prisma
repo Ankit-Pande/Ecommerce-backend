@@ -253,6 +253,8 @@ model Order {
 
   @@unique([userId, idempotencyKey])
   @@index([userId, createdAt])
+  // Address delete par Postgres yahan addressId NULL karta hai — index ke bina poori Order table scan.
+  @@index([addressId])
   // Admin list bina filter ke isi par sort hoti hai.
   @@index([createdAt])
   @@index([status, paymentExpiresAt])
