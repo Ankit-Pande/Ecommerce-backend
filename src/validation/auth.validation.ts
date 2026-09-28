@@ -1,10 +1,10 @@
 import { z } from "zod";
 
-// 10 digit number, +91/91 ke saath bhi chalega.
+// 10 digit number; +91, space aur dash ke saath bhi chalega ("+91 98765-43210").
 const loginPhone = z
   .string()
-  .trim()
-  .regex(/^(\+?91)?[6-9]\d{9}$/, "Invalid mobile number (example: 9876543210)");
+  .transform((v) => v.replace(/[\s-]/g, ""))
+  .pipe(z.string().regex(/^(\+?91)?[6-9]\d{9}$/, "Invalid mobile number (example: 9876543210)"));
 
 export const sendOtpSchema = z.object({
   body: z.object({ phone: loginPhone }).strict(),
