@@ -2,7 +2,6 @@ import Redis from "ioredis";
 import { env } from "./env";
 import { logger } from "./winston";
 
-// Redis: OTP, rate limit, session cache aur public data cache.
 export const redis = new Redis(env.REDIS_URL, {
   maxRetriesPerRequest: 2,
   retryStrategy: (times) => Math.min(times * 200, 2000),
@@ -15,6 +14,7 @@ export const redis = new Redis(env.REDIS_URL, {
 redis.on("connect", () => logger.info("Redis connected"));
 redis.on("error", (error) => logger.error("Redis error", { error }));
 
+// Server band hote waqt Redis connection band.
 export async function disconnectRedis(): Promise<void> {
   if (redis.status === "end") return;
   await redis.quit().catch((error) => {
@@ -22,8 +22,7 @@ export async function disconnectRedis(): Promise<void> {
   });
 }
 
-// Counter +1 aur pehli baar pe expiry — ek hi atomic step me, taaki expiry
-// kabhi chhoot na jaye (warna key hamesha ke liye block kar deti).
+// Rate limit ki ginti +1 karo, pehli baar par expiry lagao (ek hi step me).
 const HIT_SCRIPT = `
 local n = redis.call('INCR', KEYS[1])
 if redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end

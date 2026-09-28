@@ -5,20 +5,17 @@ import { ZodError } from "zod";
 import { logger } from "../config/winston";
 import { AppError } from "../utils/appError";
 
-// App ka aakhri middleware — har error yahin saaf message me badalti hai.
+// Har error ko saaf message me badlo; andar ki detail sirf log me, user ko kabhi nahi.
 export const errorHandler = (err: unknown, _req: Request, res: Response, next: NextFunction) => {
-  // Response shuru ho chuka hai — ab header set karenge to "Cannot set headers" crash milega.
   if (res.headersSent) return next(err);
 
   const send = (status: number, message: string) => res.status(status).json({ success: false, message });
 
-  // express.json() ki errors
   const bodyError = (err as { type?: string })?.type;
   if (bodyError === "entity.parse.failed") return send(400, "Invalid JSON");
   if (bodyError === "entity.too.large") return send(413, "Request too large");
 
   if (err instanceof ZodError) {
-    // path ka pehla hissa body/query/params hota hai — user ko sirf field ka naam
     const message = err.issues
       .map((issue) => {
         const field = issue.path.slice(1).join(".");

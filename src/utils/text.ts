@@ -1,5 +1,4 @@
-// "red" / "RED" -> "Red". Admin colour likhte waqt aur catalog filter padhte waqt —
-// dono jagah ek hi normalization, warna "red" filter "Red" products ko kabhi nahi dhundhega.
+// "red" / "RED" -> "Red", taaki colour filter hamesha match kare.
 export function titleCase(text: string): string {
   return text
     .trim()

@@ -1,4 +1,4 @@
-// Expected error (validation, auth, not found). error.ts isko seedha client ko bhejta hai.
+// Aisi error jiska message user ko dikhana hai (jaise "Order not found").
 export class AppError extends Error {
   statusCode: number;
 

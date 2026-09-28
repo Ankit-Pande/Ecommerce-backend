@@ -1,14 +1,12 @@
 import "dotenv/config";
 import { z } from "zod";
 
-// NODE_ENV na diya ho to production maano — galti se dev mode (khula CORS,
-// SMS ki jagah log) live server pe na chal jaye.
+// NODE_ENV na diya ho to production maano, taaki live par galti se dev mode na chale.
 const isProd = (process.env.NODE_ENV ?? "production") === "production";
 
-// Third-party keys production me zaroori, local par optional.
 const neededInProd = isProd ? z.string().min(1) : z.string().optional();
 
-// Saari env ek jagah check. Galat ya missing ho to app start hi nahi hogi.
+// Saari .env values yahin check hoti hain — galat ho to app start hi nahi hogi.
 const schema = z
   .object({
     NODE_ENV: z.enum(["development", "production"]).default("production"),

@@ -17,14 +17,12 @@ const start = async () => {
     logger.info(`Server running on port ${env.PORT} [${env.NODE_ENV}]`);
   });
 
-  // Har minute: pay na hue online order cancel + stock wapas, aur khatam offers ka price reset.
-  // try/finally zaroori hai — bina iske ek error poore job ko hamesha ke liye band kar deti.
+  // Har minute: unpaid order cancel + stock wapas, aur khatam offer hatao.
   let running = false;
   const minuteJob = setInterval(async () => {
     if (running) return;
     running = true;
     try {
-      // Har job alag — ek fail ho to doosri phir bhi chale.
       await orderService
         .releaseExpiredOrders()
         .catch((error) => logger.error("Order expiry job failed", { error }));
@@ -36,8 +34,7 @@ const start = async () => {
     }
   }, ONE_MINUTE);
 
-  // Roz: expire ho chuki login sessions saaf. Startup par bhi ek baar — Railway itni baar
-  // restart hota hai ki sirf 24 ghante wala interval kabhi chalta hi nahi.
+  // Roz (aur start par ek baar): purani sessions aur product views saaf.
   const dailyCleanup = async () => {
     await tokenService
       .deleteExpiredSessions()
@@ -49,7 +46,7 @@ const start = async () => {
   dailyCleanup();
   const dailyJob = setInterval(dailyCleanup, ONE_DAY);
 
-  // Band hone se pehle naye request lena roko, phir DB/Redis band.
+  // Band karte waqt: naye request roko, phir DB aur Redis band.
   const shutdown = (signal: string) => {
     logger.info(`${signal} received, shutting down...`);
     clearInterval(minuteJob);

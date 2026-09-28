@@ -13,8 +13,7 @@ const MAX_WRONG = 3; // itne galat OTP pe code khatam, naya maango
 const otpKey = (phone: string) => `otp:${phone}`;
 const hourKey = (phone: string) => `otp:hour:${phone}`;
 
-// Pichhle poore ek ghante me kitne OTP gaye. Ginti aakhri OTP se peeche ki taraf hoti hai,
-// isliye ghanta badalte hi limit reset nahi hoti.
+// Pichhle 60 minute me is number par kitne OTP gaye.
 async function sentInLastHour(phone: string): Promise<number> {
   const key = hourKey(phone);
   const now = Date.now();
@@ -22,6 +21,7 @@ async function sentInLastHour(phone: string): Promise<number> {
   return redis.zcard(key);
 }
 
+// OTP bheja, ginti me jodo.
 async function markSent(phone: string): Promise<void> {
   const key = hourKey(phone);
   const now = Date.now();
@@ -29,8 +29,7 @@ async function markSent(phone: string): Promise<void> {
   await redis.expire(key, ONE_HOUR);
 }
 
-// Galat OTP ginna aur sahi OTP mitaana ek hi atomic step me — warna ek saath
-// bheji hazaar requests sab ek hi code se match kar leti (brute force).
+// OTP check ek hi step me (sahi = mitao, 3 galat = mitao) — brute force nahi ho sakta.
 const VERIFY_SCRIPT = `
 local code = redis.call('HGET', KEYS[1], 'code')
 if not code then return 0 end
@@ -39,8 +38,8 @@ if redis.call('HINCRBY', KEYS[1], 'wrong', 1) >= tonumber(ARGV[2]) then redis.ca
 return -1`;
 
 export const otpService = {
+  // OTP bhejo: 60 sec gap, ghante me 5, roz ki SMS limit.
   async send(phone: string): Promise<void> {
-    // SET NX: double click pe bhi ek hi SMS.
     const allowed = await redis.set(`otp:gap:${phone}`, "1", "EX", RESEND_GAP, "NX");
     if (!allowed) throw new AppError("Please wait a minute before requesting a new OTP", 429);
 
@@ -62,6 +61,7 @@ export const otpService = {
     await markSent(phone);
   },
 
+  // OTP sahi hai ya nahi.
   async verify(phone: string, otp: string): Promise<void> {
     const result = Number(await redis.eval(VERIFY_SCRIPT, 1, otpKey(phone), hashOtp(phone, otp), MAX_WRONG));
     if (result === 1) return;

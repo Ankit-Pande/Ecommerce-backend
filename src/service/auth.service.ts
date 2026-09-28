@@ -5,15 +5,13 @@ import { AppError } from "../utils/appError";
 import { otpService } from "./otp.service";
 import { tokenService } from "./token.service";
 
-// "+91 98765-43210" / "919876543210" / "9876543210" -> "9876543210"
-// Ek number ke do format se do alag user na banein.
+// "+91 98765-43210" -> "9876543210", taaki ek number ke do account na banein.
 const normalizePhone = (phone: string) => phone.replace(/\D/g, "").slice(-10);
 
 export const authService = {
+  // OTP bhejo (blocked number ko nahi).
   async requestOtp(phone: string): Promise<void> {
     const cleanPhone = normalizePhone(phone);
-    // Blocked number par SMS bhejne ka koi matlab nahi — wo login kar hi nahi payega,
-    // aur baar-baar OTP maangkar MSG91 ka bill badha sakta hai.
     const user = await prisma.user.findUnique({
       where: { phone: cleanPhone },
       select: { isBlocked: true },
@@ -23,12 +21,12 @@ export const authService = {
     await otpService.send(cleanPhone);
   },
 
-  // OTP sahi -> user dhundo ya banao -> nayi session.
+  // OTP sahi ho to user dhundo ya banao, aur login session do.
   async verifyOtpAndLogin(phone: string, otp: string) {
     const cleanPhone = normalizePhone(phone);
     await otpService.verify(cleanPhone, otp);
 
-    // SUPER_ADMIN_PHONE wala number login karte hi super admin (seed ki zaroorat nahi).
+    // SUPER_ADMIN_PHONE wala number login karte hi super admin.
     const isSuperAdmin = cleanPhone === env.SUPER_ADMIN_PHONE;
     const user = await prisma.user.upsert({
       where: { phone: cleanPhone },

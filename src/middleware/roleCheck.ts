@@ -2,7 +2,7 @@ import { RequestHandler } from "express";
 import { Role } from "@prisma/client";
 import { AppError } from "../utils/appError";
 
-// authCheck ke baad lagta hai. Role DB se aaya hai, token se nahi.
+// Sirf diye gaye role (jaise ADMIN) aage ja sakein — authCheck ke baad lagta hai.
 export const roleCheck =
   (...allowedRoles: Role[]): RequestHandler =>
   (req, _res, next) => {

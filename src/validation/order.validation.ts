@@ -1,8 +1,7 @@
 import { z } from "zod";
 import { csv, idParams, orderStatus, page, uuid } from "./common";
 
-// idempotencyKey: frontend har checkout click pe ek hi key bhejta hai —
-// double click / retry pe dusra order nahi banta.
+// idempotencyKey: double click ya retry par dusra order na bane.
 export const checkoutSchema = z.object({
   body: z
     .object({
@@ -25,7 +24,7 @@ export const verifyPaymentSchema = z.object({
 
 export const orderIdSchema = z.object({ params: idParams });
 
-// "In progress" tab ek se zyada status maangta hai: ?status=PENDING,CONFIRMED
+// Ek se zyada status: ?status=PENDING,CONFIRMED
 export const listOrderSchema = z.object({
   query: z.object({
     status: csv(orderStatus, 5).optional(),

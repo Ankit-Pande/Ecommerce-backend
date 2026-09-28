@@ -1,12 +1,10 @@
 import { z } from "zod";
 import { AGE_GROUPS, GENDERS, idParams, orderStatus, page, queryBoolean, slug, uuid } from "./common";
 
-// Multipart form me sab kuch string aata hai — isliye neeche wale chhote converters.
-
-// "true"/"false" -> boolean (z.coerce.boolean "false" ko bhi true bana deta hai).
+// Form ka "true"/"false" -> boolean (z.coerce.boolean "false" ko bhi true bana deta hai).
 const formBoolean = z.preprocess((v) => (v === "true" ? true : v === "false" ? false : v), z.boolean());
 
-// Khaali string = field hatao (null). Multipart me null bhej hi nahi sakte.
+// Form me khaali string bhejo = field hatao (null).
 const emptyToNull = (v: unknown) => (v === "" ? null : v);
 
 const clearableText = (max: number) =>
@@ -24,14 +22,12 @@ const productFields = {
   name: z.string().trim().min(2).max(150),
   slug,
   description: z.string().trim().min(5).max(5000),
-  // Paise me — poore API me paisa integer paise hi hai, rupee kahin nahi.
   pricePaise: z.coerce.number().int().min(1).max(1000000000),
   discountPercent: z.coerce.number().int().min(0).max(90).default(0),
   stock: z.coerce.number().int().min(0).max(100000).default(0),
   categoryId: uuid,
   brandId: z.preprocess(emptyToNull, uuid.nullable()).optional(),
   color: clearableText(30).optional(),
-  // Catalog ka filter inhi values par chalta hai — free text hoga to filter kabhi match nahi karega.
   gender: clearableEnum(GENDERS).optional(),
   ageGroup: clearableEnum(AGE_GROUPS).optional(),
   // Offer ki deadline aage ki honi chahiye.
@@ -53,7 +49,7 @@ export const updateProductSchema = z.object({
   body: z.object(productFields).partial().extend({ isActive: formBoolean.optional() }).strict(),
 });
 
-// Bulk: JSON, images pehle /admin/uploads se URL bana ke bhejo. Ek baar me max 50.
+// Bulk: max 50 product, images pehle /admin/uploads se URL banakar bhejo.
 export const bulkCreateProductSchema = z.object({
   body: z.object({
     products: z

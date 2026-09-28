@@ -6,7 +6,7 @@ import { logger } from "../config/winston";
 
 export const getProduct = asyncHandler(async (req: Request, res: Response) => {
   const product = await productService.getBySlug(req.params.slug);
-  // "Recently viewed" save — fail ho to bhi page na ruke.
+  // "Recently viewed" save karo; fail ho to bhi page khule.
   if (req.user) {
     productService.recordView(req.user.userId, product.id).catch((error) => {
       logger.warn("Product view not saved", { error });

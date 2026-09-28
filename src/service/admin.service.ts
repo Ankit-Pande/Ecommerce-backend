@@ -27,7 +27,7 @@ type ProductInput = {
 
 type Actor = { userId: string; role: Role };
 
-// Single aur bulk dono isi se DB row banate hain.
+// Form data se product ki DB row banao (single aur bulk dono ke liye).
 function productRow(p: ProductInput, images: string[]) {
   return {
     name: p.name,
@@ -49,14 +49,14 @@ function productRow(p: ProductInput, images: string[]) {
   };
 }
 
-// Tree sirf 2 level: parent khud top-level hona chahiye.
+// Category sirf 2 level: parent khud kisi ki subcategory na ho.
 async function checkParent(parentId: string) {
   const parent = await prisma.category.findUnique({ where: { id: parentId }, select: { parentId: true } });
   if (!parent) throw new AppError("Parent category not found", 404);
   if (parent.parentId) throw new AppError("Subcategory cannot have its own subcategory", 400);
 }
 
-// Super admin ko koi nahi chhoo sakta; admin ko sirf super admin; khud par bhi nahi.
+// Super admin ko koi nahi chhoo sakta, admin ko sirf super admin, khud par kuch nahi.
 async function checkCanManage(actor: Actor, userId: string) {
   if (userId === actor.userId) throw new AppError("You cannot do this on your own account", 400);
   const user = await prisma.user.findFirst({
@@ -72,18 +72,19 @@ async function checkCanManage(actor: Actor, userId: string) {
 
 export const adminService = {
   // ---------- Product ----------
-  // Image upload mehnga hai — controller upload se pehle slug check karta hai.
+  // Slug pehle se use me hai to 409.
   async checkSlugFree(slug: string) {
     const taken = await prisma.product.findUnique({ where: { slug }, select: { id: true } });
     if (taken) throw new AppError("Slug already in use", 409);
   },
 
-  // Sirf "hai ya nahi" — poora row padhne ki zaroorat nahi.
+  // Product hai ya nahi, na ho to 404.
   async checkProductExists(id: string) {
     const product = await prisma.product.findUnique({ where: { id }, select: { id: true } });
     if (!product) throw new AppError("Product not found", 404);
   },
 
+  // Naya product (kam se kam 1 image).
   async createProduct(data: ProductInput, images: string[]) {
     if (images.length === 0) throw new AppError("At least one product image required", 400);
     const product = await prisma.product.create({ data: productRow(data, images) });
@@ -91,12 +92,12 @@ export const adminService = {
     return product;
   },
 
-  // Max 50. Jo slug pehle se hai wo chhod dete hain (dobara upload safe) aur report me batate hain.
+  // Ek saath 50 tak product; jo slug pehle se hai wo chhod do aur batao.
   async bulkCreateProducts(products: (ProductInput & { images: string[] })[]) {
     const slugs = products.map((p) => p.slug);
     if (new Set(slugs).size !== slugs.length) throw new AppError("Duplicate slugs in the uploaded list", 400);
 
-    // Galat category/brand id pe aadha data na bane — pehle hi rok do.
+    // Galat category/brand id ho to kuch bhi save mat karo.
     const categoryIds = [...new Set(products.map((p) => p.categoryId))];
     const brandIds = [...new Set(products.map((p) => p.brandId).filter((id): id is string => !!id))];
     const [categoryCount, brandCount, existing] = await Promise.all([
@@ -116,7 +117,7 @@ export const adminService = {
     return { created: toCreate.length, skipped };
   },
 
-  // Sirf bheje gaye fields badlte hain. Nayi images aayi to purani ki jagah.
+  // Product badlo (sirf bheje gaye fields; nayi images aayi to purani ki jagah).
   async updateProduct(id: string, data: Partial<ProductInput> & { isActive?: boolean }, newImages: string[]) {
     const product = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "Product" WHERE "id" = ${id} FOR UPDATE`;
@@ -136,7 +137,7 @@ export const adminService = {
         data: {
           ...rest,
           pricePaise,
-          // Price/discount/deadline me kuch bhi badle, sale price dobara.
+          // Sale price hamesha dobara nikalo.
           sellPaise: finalPrice(pricePaise, discountPercent, offerEndsAt),
           ...(color !== undefined && { color: color ? titleCase(color) : null }),
           ...(categoryId && { category: { connect: { id: categoryId } } }),
@@ -151,13 +152,13 @@ export const adminService = {
     return product;
   },
 
-  // Delete nahi, sirf chhupao — purane orders me product rehna chahiye.
+  // Product delete nahi, sirf chhupao (purane orders me chahiye).
   async hideProduct(id: string) {
     await prisma.product.update({ where: { id }, data: { isActive: false } });
     await bumpStorefrontCache();
   },
 
-  // Edit form (hidden product bhi).
+  // Edit form ke liye ek product (chhupa hua bhi).
   async getProduct(id: string) {
     const product = await prisma.product.findUnique({
       where: { id },
@@ -185,7 +186,7 @@ export const adminService = {
     return product;
   },
 
-  // Admin list: hidden bhi. reservedQuantity = unpaid online orders me ruka stock.
+  // Admin product list (chhupe bhi), unpaid orders me ruka stock ke saath.
   async listProducts(query: {
     q?: string;
     lowStock?: boolean;
@@ -227,6 +228,7 @@ export const adminService = {
   },
 
   // ---------- Category ----------
+  // Saari category aur unki subcategory.
   async listCategories() {
     return prisma.category.findMany({
       where: { parentId: null },
@@ -245,6 +247,7 @@ export const adminService = {
     });
   },
 
+  // Nayi category ya subcategory.
   async createCategory(data: { name: string; slug: string; parentId?: string }, image?: string) {
     if (data.parentId) await checkParent(data.parentId);
     const category = await prisma.category.create({ data: { ...data, image } });
@@ -252,6 +255,7 @@ export const adminService = {
     return category;
   },
 
+  // Category badlo (2 level se zyada na bane).
   async updateCategory(
     id: string,
     data: { name?: string; slug?: string; parentId?: string | null; isActive?: boolean },
@@ -260,7 +264,6 @@ export const adminService = {
     if (data.parentId) {
       if (data.parentId === id) throw new AppError("Category cannot be its own parent", 400);
       await checkParent(data.parentId);
-      // Jiske khud subcategories hain wo subcategory nahi ban sakti (3 level ho jaata).
       const children = await prisma.category.count({ where: { parentId: id } });
       if (children > 0) throw new AppError("Category with subcategories cannot become a subcategory", 400);
     }
@@ -272,7 +275,7 @@ export const adminService = {
     return category;
   },
 
-  // Products ya subcategory ho to delete nahi (inactive kar do).
+  // Category delete (products ya subcategory ho to nahi).
   async deleteCategory(id: string) {
     const [products, children] = await Promise.all([
       prisma.product.count({ where: { categoryId: id } }),
@@ -285,6 +288,7 @@ export const adminService = {
   },
 
   // ---------- Brand ----------
+  // Saare brand.
   async listBrands() {
     return prisma.brand.findMany({
       select: { id: true, name: true, slug: true, logo: true, isActive: true },
@@ -292,18 +296,21 @@ export const adminService = {
     });
   },
 
+  // Naya brand.
   async createBrand(data: { name: string; slug: string }, logo?: string) {
     const brand = await prisma.brand.create({ data: { ...data, logo } });
     await bumpStorefrontCache();
     return brand;
   },
 
+  // Brand badlo.
   async updateBrand(id: string, data: { name?: string; slug?: string; isActive?: boolean }, logo?: string) {
     const brand = await prisma.brand.update({ where: { id }, data: { ...data, ...(logo && { logo }) } });
     await bumpStorefrontCache();
     return brand;
   },
 
+  // Brand delete (products ho to nahi).
   async deleteBrand(id: string) {
     const products = await prisma.product.count({ where: { brandId: id } });
     if (products > 0) {
@@ -317,6 +324,7 @@ export const adminService = {
   },
 
   // ---------- Banner ----------
+  // Saare banner, position ke kram me.
   async listBanners() {
     return prisma.banner.findMany({
       select: { id: true, image: true, link: true, position: true, isActive: true },
@@ -324,12 +332,14 @@ export const adminService = {
     });
   },
 
+  // Naya banner.
   async createBanner(data: { link?: string; position: number }, image: string) {
     const banner = await prisma.banner.create({ data: { ...data, image } });
     await bumpStorefrontCache();
     return banner;
   },
 
+  // Banner badlo.
   async updateBanner(
     id: string,
     data: { link?: string | null; position?: number; isActive?: boolean },
@@ -340,12 +350,14 @@ export const adminService = {
     return banner;
   },
 
+  // Banner delete.
   async deleteBanner(id: string) {
     await prisma.banner.delete({ where: { id } });
     await bumpStorefrontCache();
   },
 
   // ---------- Orders ----------
+  // Saare orders (status / review filter ke saath).
   async listOrders(query: { status?: OrderStatus; needsReview?: boolean; cursor?: string; limit: number }) {
     const rows = await prisma.order.findMany({
       where: {
@@ -370,6 +382,7 @@ export const adminService = {
     return paginate(rows, query.limit);
   },
 
+  // Ek order poori detail ke saath.
   async getOrder(id: string) {
     const order = await prisma.order.findUnique({
       where: { id },
@@ -391,6 +404,7 @@ export const adminService = {
   },
 
   // ---------- Users ----------
+  // Users list (phone se search).
   async listUsers(query: { q?: string; cursor?: string; limit: number }) {
     const rows = await prisma.user.findMany({
       where: { isDeleted: false, ...(query.q && { phone: { contains: query.q } }) },
@@ -410,6 +424,7 @@ export const adminService = {
     return paginate(rows, query.limit);
   },
 
+  // Ek user, address aur order ginti ke saath.
   async getUser(id: string) {
     const user = await prisma.user.findFirst({
       where: { id, isDeleted: false },
@@ -430,20 +445,21 @@ export const adminService = {
     return user;
   },
 
-  // Block pe user ke saare device turant logout.
+  // User block/unblock (block par saare device se logout).
   async setUserBlock(actor: Actor, userId: string, isBlocked: boolean) {
     await checkCanManage(actor, userId);
     await prisma.user.update({ where: { id: userId }, data: { isBlocked } });
     if (isBlocked) await tokenService.revokeAllSessions(userId);
   },
 
-  // Sirf SUPER_ADMIN (route pe check). Role badla to purani sessions khatam — naya role turant lage.
+  // Role badlo (sirf super admin); purani sessions khatam, naya role turant lage.
   async setUserRole(actor: Actor, userId: string, role: "USER" | "ADMIN") {
     await checkCanManage(actor, userId);
     await prisma.user.update({ where: { id: userId }, data: { role } });
     await tokenService.revokeAllSessions(userId);
   },
 
+  // Admin kisi user ka account delete kare.
   async deleteUser(actor: Actor, userId: string) {
     await checkCanManage(actor, userId);
     await userService.deleteAccount(userId);

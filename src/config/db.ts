@@ -2,9 +2,9 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import { logger } from "./winston";
 import { AppError } from "../utils/appError";
 
-// Poori app me ek hi Prisma client (connection pool).
 export const prisma = new PrismaClient({ log: ["warn", "error"] });
 
+// Start par DB se connect, fail ho to app band.
 export async function connectDB(): Promise<void> {
   try {
     await prisma.$connect();
@@ -15,14 +15,14 @@ export async function connectDB(): Promise<void> {
   }
 }
 
+// Server band hote waqt DB connection band.
 export async function disconnectDB(): Promise<void> {
   await prisma.$disconnect().catch((error) => {
     logger.error("Database disconnect failed", { error });
   });
 }
 
-// User ki row lock karo — ek user ki cart/address/checkout requests ek-ek karke chalein
-// (do tab se ek saath click pe ginti galat na ho). Lock ke baad account bhi check.
+// User ki row lock — ek user ki requests ek-ek karke chalein, aur blocked/deleted ho to roko.
 export async function lockUser(tx: Prisma.TransactionClient, userId: string): Promise<void> {
   const [user] = await tx.$queryRaw<{ isBlocked: boolean; isDeleted: boolean }[]>`
     SELECT "isBlocked", "isDeleted" FROM "User" WHERE "id" = ${userId} FOR UPDATE`;

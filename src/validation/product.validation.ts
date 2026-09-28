@@ -5,7 +5,7 @@ export const productSlugSchema = z.object({
   params: z.object({ slug }),
 });
 
-// Guest ka recently-viewed: ?slugs=a,b,c (max 10)
+// Kai product ek saath: ?slugs=a,b,c (max 10)
 export const batchProductSchema = z.object({
   query: z.object({ slugs: csv(slug, 10) }),
 });

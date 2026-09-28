@@ -4,7 +4,6 @@ import { env } from "../config/env";
 import { logger } from "../config/winston";
 import { AppError } from "../utils/appError";
 
-// Product/category/brand/banner images Cloudinary pe. DB me sirf URL.
 cloudinary.config({
   cloud_name: env.CLOUDINARY_CLOUD_NAME,
   api_key: env.CLOUDINARY_API_KEY,
@@ -13,7 +12,7 @@ cloudinary.config({
 
 const allowedMimeTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
 
-// Memory me file (max 2MB). Size/type ki error error.ts sambhalta hai.
+// Image upload: memory me, max 2MB, sirf jpg/png/webp.
 export const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 2 * 1024 * 1024 },
@@ -25,7 +24,7 @@ export const upload = multer({
   },
 });
 
-// Mimetype browser bhejta hai (jhooth ho sakta hai) — file ke pehle bytes se asli type check.
+// File ke pehle bytes dekh kar check karo ki asli image hai (naam/type jhooth ho sakta hai).
 function isRealImage(buffer: Buffer): boolean {
   const jpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
   const png = buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
@@ -33,6 +32,7 @@ function isRealImage(buffer: Buffer): boolean {
   return jpeg || png || webp;
 }
 
+// Ek image Cloudinary par daalo, URL wapas lo.
 export function uploadImage(buffer: Buffer): Promise<string> {
   if (!isRealImage(buffer)) return Promise.reject(new AppError("Invalid image content", 400));
 
@@ -51,7 +51,7 @@ export function uploadImage(buffer: Buffer): Promise<string> {
   });
 }
 
-// Multipart ki saari files upload karke URLs (koi file nahi to khaali list).
+// Saari files upload karo, URLs ki list wapas lo.
 export async function uploadFiles(files: Express.Multer.File[] | undefined): Promise<string[]> {
   return Promise.all((files ?? []).map((file) => uploadImage(file.buffer)));
 }

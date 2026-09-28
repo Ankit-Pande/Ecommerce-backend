@@ -4,7 +4,7 @@ import { AppError } from "./appError";
 
 export const REFRESH_TTL_DAYS = 15;
 
-// Access token me role nahi — role har request pe session se aata hai (badal sakta hai).
+// Access token me role nahi rakhte — role har request par DB/session se aata hai.
 interface AccessPayload {
   userId: string;
   sessionId: string;
@@ -16,16 +16,19 @@ interface RefreshPayload {
   jti: string;
 }
 
+// Chhota access token banao (15 min).
 export function signAccessToken(payload: AccessPayload): string {
   return jwt.sign(payload, env.JWT_ACCESS_SECRET, {
     expiresIn: env.JWT_ACCESS_EXPIRY as jwt.SignOptions["expiresIn"],
   });
 }
 
+// Lamba refresh token banao (15 din).
 export function signRefreshToken(payload: RefreshPayload): string {
   return jwt.sign(payload, env.JWT_REFRESH_SECRET, { expiresIn: `${REFRESH_TTL_DAYS}d` });
 }
 
+// Access token check karo, galat ya expired ho to 401.
 export function verifyAccessToken(token: string): AccessPayload {
   try {
     const data = jwt.verify(token, env.JWT_ACCESS_SECRET, { algorithms: ["HS256"] });
@@ -37,6 +40,7 @@ export function verifyAccessToken(token: string): AccessPayload {
   }
 }
 
+// Refresh token check karo, galat ya expired ho to 401.
 export function verifyRefreshToken(token: string): RefreshPayload {
   try {
     const data = jwt.verify(token, env.JWT_REFRESH_SECRET, { algorithms: ["HS256"] });

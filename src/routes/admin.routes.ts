@@ -59,8 +59,7 @@ const router = Router();
 // Poora admin area: login + ADMIN/SUPER_ADMIN.
 router.use(authCheck, roleCheck("ADMIN", "SUPER_ADMIN"));
 
-// Uploads (bulk product se pehle URLs). Ek request me 10 x 2MB tak memory me aata hai —
-// poori app me sirf yahi route itni RAM leta hai, isliye apni limit.
+// Uploads: 10 image tak (zyada RAM leta hai, isliye apni limit).
 router.post(
   "/uploads",
   rateLimiter({ bucket: "admin-upload", windowSec: 60, max: 30 }),
@@ -68,7 +67,7 @@ router.post(
   uploadImages,
 );
 
-// Products (max 6 image). Multer pehle chalta hai taaki validate ko form fields milein.
+// Products (max 6 image; multer pehle, taaki validate ko form fields milein).
 router.get("/products", validate(adminListProductSchema), listAdminProducts);
 router.get("/products/:id", validate(idParamSchema), getAdminProduct);
 router.post("/products", upload.array("images", 6), validate(createProductSchema), createProduct);

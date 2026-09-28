@@ -6,7 +6,7 @@ import { ACTIVE_CATEGORY, CARD_SELECT, productCard } from "../utils/price";
 const VIEW_KEEP_DAYS = 90;
 
 export const productService = {
-  // Product detail page (5 min cache). Exact stock nahi, sirf status.
+  // Product detail page (5 min cache).
   async getBySlug(slug: string) {
     const product = await remember(`product:${slug}`, CACHE_SECONDS, async () => {
       const row = await prisma.product.findFirst({
@@ -28,7 +28,7 @@ export const productService = {
           brand: { select: { id: true, name: true, slug: true, logo: true, isActive: true } },
         },
       });
-      // throw yahan nahi — null cache me jaata hai, isliye galat slug dobara DB tak nahi pahunchta.
+      // null bhi cache hota hai, taaki galat slug baar-baar DB tak na jaaye.
       if (!row) return null;
 
       const { description, images, color, isTrending, isFeatured, category, brand } = row;
@@ -39,7 +39,6 @@ export const productService = {
         color,
         isTrending,
         isFeatured,
-        // ACTIVE_CATEGORY filter pehle hi pakka karta hai ki category aur parent dono chalu hain.
         category,
         brand: brand?.isActive ? { id: brand.id, name: brand.name, slug: brand.slug, logo: brand.logo } : null,
       };
@@ -49,10 +48,9 @@ export const productService = {
     return product;
   },
 
-  // Guest ka recently-viewed: kai slug ka current card ek call me, maange hue kram me.
+  // Kai slug ke product ek saath, usi kram me (guest ka recently viewed).
   async getManyBySlugs(requested: string[]) {
     const slugs = [...new Set(requested)];
-    // Sorted key: "a,b" aur "b,a" ek hi cache entry.
     const cards = await remember(`products:${[...slugs].sort().join(",")}`, CACHE_SECONDS, async () => {
       const rows = await prisma.product.findMany({
         where: { slug: { in: slugs }, isActive: true, category: ACTIVE_CATEGORY },
@@ -60,7 +58,6 @@ export const productService = {
       });
       return rows.map(productCard);
     });
-    // Frontend ne jis kram me slug bheje, usi kram me wapas.
     const bySlug = new Map(cards.map((card) => [card.slug, card]));
     return slugs.map((slug) => bySlug.get(slug)).filter((card) => card !== undefined);
   },
@@ -92,16 +89,16 @@ export const productService = {
     return related;
   },
 
-  // Login user ne product dekha (product page se, bina rukawat ke).
+  // User ne product dekha — recently viewed me save.
   async recordView(userId: string, productId: string) {
     await prisma.productView.upsert({
       where: { userId_productId: { userId, productId } },
       create: { userId, productId },
-      // @updatedAt par bharosa nahi — khaali update par wo chalega ya nahi, ye tay nahi.
       update: { viewedAt: new Date() },
     });
   },
 
+  // Login user ke aakhri 5 dekhe hue product.
   async getRecentlyViewed(userId: string) {
     const rows = await prisma.productView.findMany({
       where: { userId, product: { isActive: true, category: ACTIVE_CATEGORY } },
@@ -112,15 +109,13 @@ export const productService = {
     return rows.map(({ product }) => productCard(product));
   },
 
-  // Roz (server.ts): 90 din purane view hata do — ye table kabhi apne aap saaf nahi hoti.
+  // 90 din purane views hatao (roz).
   async deleteOldViews() {
     const cutoff = new Date(Date.now() - VIEW_KEEP_DAYS * 24 * 60 * 60 * 1000);
     await prisma.productView.deleteMany({ where: { viewedAt: { lt: cutoff } } });
   },
 
-  // Har minute (server.ts): khatam hue offer ka discount 0 aur sellPaise = MRP,
-  // taaki catalog ka price filter/sort sahi rahe. Purani date bhi hatao — warna admin
-  // agla discount bina nayi date ke lagaye to wo beeti date ki wajah se turant mar jaata.
+  // Khatam offer hatao: discount 0, price = MRP, date bhi saaf (har minute).
   async expireOffers() {
     const changed = await prisma.$executeRaw`
       UPDATE "Product" SET "discountPercent" = 0, "sellPaise" = "pricePaise", "offerEndsAt" = NULL

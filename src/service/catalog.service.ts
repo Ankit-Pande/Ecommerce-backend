@@ -33,7 +33,7 @@ const LIST_SELECT = {
   brand: { select: { name: true, slug: true, isActive: true } },
 } satisfies Prisma.ProductSelect;
 
-// id se tie-break — warna same price/date wale products page 2 pe repeat ya skip hote.
+// Sort ke options (id se tie-break, taaki page 2 par product repeat na ho).
 const SORTS: Record<CatalogQuery["sort"], Prisma.ProductOrderByWithRelationInput[]> = {
   latest: [{ createdAt: "desc" }, { id: "desc" }],
   price_asc: [{ sellPaise: "asc" }, { id: "asc" }],
@@ -42,8 +42,7 @@ const SORTS: Record<CatalogQuery["sort"], Prisma.ProductOrderByWithRelationInput
   rating: [{ ratingAverage: "desc" }, { id: "desc" }],
 };
 
-// Search box se budget: "shoes under 2000", "phone 20k tak", "5000 se 20000", "above 1 lakh".
-// Mila hua hissa text se hata dete hain, baaki text pe search hoti hai.
+// Search text me price pehchano: "under 2000", "20k tak", "5000 se 20000", "above 1 lakh".
 const AMOUNT = String.raw`(\d[\d,]*(?:\.\d+)?)\s*(k|hazar|lakh|lac)?\b`;
 const RANGE = new RegExp(String.raw`${AMOUNT}\s*(?:-|to|se)\s*${AMOUNT}`, "i");
 const BELOW = new RegExp(
@@ -55,17 +54,18 @@ const ABOVE = new RegExp(
   "i",
 );
 
-// Validation me bhi yahi limit hai.
 const MIN_SEARCH_LENGTH = 2;
 
 const toPaise = (rupees?: number) => (rupees === undefined ? undefined : Math.round(rupees * 100));
 
+// "20" + "k" -> 20000, "1" + "lakh" -> 100000.
 function toRupees(digits: string, unit?: string): number {
   const value = Number(digits.replace(/,/g, ""));
   const unitValue = !unit ? 1 : unit.toLowerCase().startsWith("l") ? 100000 : 1000;
   return value * unitValue;
 }
 
+// Search text se budget nikalo aur bacha hua text search ke liye do.
 function readBudget(q: string): { text: string; minPrice?: number; maxPrice?: number } {
   const clean = (text: string) =>
     text
@@ -91,13 +91,12 @@ function readBudget(q: string): { text: string; minPrice?: number; maxPrice?: nu
     matched = above[0];
   }
 
-  // "32 to 43 inch tv" / "iphone 13 se 15" budget nahi hai — ₹100 se kam ko price mat maano.
+  // ₹100 se kam ko price mat maano ("32 to 43 inch tv" budget nahi hai).
   if (!matched || (budget.maxPrice ?? budget.minPrice ?? 0) < 100) return { text: clean(q) };
   return { text: clean(q.replace(matched, " ")), ...budget };
 }
 
-// Har shabd alag dhundha jaata hai aur sab match hone chahiye. Poora phrase ek hi field me
-// dhundhoge to "red shoes" kabhi nahi milega — "red" colour me hai aur "shoes" naam me.
+// Har shabd kahin bhi mile (naam, colour, brand, category) — "red shoes" bhi mile.
 function searchWhere(words: string[]): Prisma.ProductWhereInput {
   return {
     AND: words.map((word) => {
@@ -116,7 +115,7 @@ function searchWhere(words: string[]): Prisma.ProductWhereInput {
   };
 }
 
-// Search text se kaam ke shabd. Bahut lamba query na ho isliye 6 tak.
+// Search text se kaam ke shabd (max 6).
 function searchWords(text: string): string[] {
   return text
     .split(/\s+/)
@@ -124,7 +123,7 @@ function searchWords(text: string): string[] {
     .slice(0, 6);
 }
 
-// Category/subcategory/section — filters() aur list() dono isse shuru karte hain.
+// Category, subcategory aur section (trending/featured) ke filter.
 function baseFilters(query: {
   category?: string;
   subcategory?: string;
@@ -143,10 +142,8 @@ function baseFilters(query: {
   return filters;
 }
 
-// Typo wali search ("samsng") — normal search khaali aaye tabhi. pg_trgm ka % operator.
+// Galat spelling wali search ("samsng"); 2 sec se zyada chale to Postgres khud rok de.
 async function typoMatchIds(text: string): Promise<string[]> {
-  // Bade catalog par ye query mehngi hai. Transaction ke andar SET LOCAL lagta hai, isliye
-  // 2 second se lambi chali to Postgres khud hi rok deta hai — poora DB atakta nahi.
   const [, rows] = await prisma.$transaction([
     prisma.$executeRaw`SET LOCAL statement_timeout = '2s'`,
     prisma.$queryRaw<{ id: string }[]>`
@@ -160,6 +157,7 @@ async function typoMatchIds(text: string): Promise<string[]> {
   return rows.map((row) => row.id);
 }
 
+// Catalog ka ek product (card + colour, brand, category).
 function toItem(p: Prisma.ProductGetPayload<{ select: typeof LIST_SELECT }>) {
   return {
     ...productCard(p),
@@ -174,16 +172,13 @@ function toItem(p: Prisma.ProductGetPayload<{ select: typeof LIST_SELECT }>) {
 }
 
 export const catalogService = {
-  // Listing + search + filter + sort, cursor pagination. 5 min cache.
+  // Product list: search + filter + sort + pages (5 min cache).
   async list(query: CatalogQuery) {
     const budget = readBudget(query.q ?? "");
     const words = searchWords(budget.text);
-    // "under 2000" poora budget query hai — sirf price filter sahi hai. Par "a under 2000" me
-    // "a" bacha hai jise search nahi kar sakte; use chup-chaap girane par user ko ₹2000 tak ka
-    // poora catalog dikh jaata, jo usne maanga hi nahi tha.
+    // Text bacha par koi kaam ka shabd nahi ("a under 2000") — khaali jawab, poora catalog nahi.
     if (budget.text.length > 0 && words.length === 0) return { items: [], nextCursor: null };
 
-    // Query paise me aati hai; search text ("under 2000") se rupee nikalta hai.
     const minPaise = query.minPricePaise ?? toPaise(budget.minPrice);
     const maxPaise = query.maxPricePaise ?? toPaise(budget.maxPrice);
     const cacheKey = createHash("sha1")
@@ -196,10 +191,9 @@ export const catalogService = {
       if (query.color) filters.push({ color: { in: query.color } });
       if (query.gender) filters.push({ gender: { in: query.gender } });
       if (query.ageGroup) filters.push({ ageGroup: { in: query.ageGroup } });
-      // Price sale price (discount ke baad) pe.
+      // Price filter discount ke baad wale price par.
       if (minPaise !== undefined) filters.push({ sellPaise: { gte: minPaise } });
       if (maxPaise !== undefined) filters.push({ sellPaise: { lte: maxPaise } });
-      // Sirf chalu offer.
       if (query.discount) {
         filters.push({
           discountPercent: { gt: 0 },
@@ -215,7 +209,7 @@ export const catalogService = {
         ...(query.cursor && { cursor: { id: query.cursor }, skip: 1 }),
       });
 
-      // Kuch nahi mila -> typo wali search (baaki saare filter wahi).
+      // Kuch nahi mila to galat spelling wali search try karo.
       if (words.length > 0 && rows.length === 0 && !query.cursor) {
         const ids = await typoMatchIds(words.join(" "));
         if (ids.length === 0) return { items: [], nextCursor: null };
@@ -223,8 +217,7 @@ export const catalogService = {
           where: { AND: [...filters, { id: { in: ids } }] },
           select: LIST_SELECT,
         });
-        // ids similarity ke kram me aaye hain — wahi kram wapas lagao, warna sabse
-        // milta-julta product neeche chala jaata hai.
+        // Sabse milta-julta product upar rahe.
         const position = new Map(ids.map((id, index) => [id, index]));
         typoRows.sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0));
         return { items: typoRows.slice(0, query.limit).map(toItem), nextCursor: null };
@@ -235,8 +228,7 @@ export const catalogService = {
     });
   },
 
-  // Sidebar: is category me jo brands, colours aur price range maujood hain.
-  // Search text se nahi badalta — type karte waqt har letter pe naya cache na bane.
+  // Sidebar filter: is category ke brands, colours aur price range.
   async filters(query: { category?: string; subcategory?: string }) {
     const cacheKey = `filters:${query.category ?? ""}:${query.subcategory ?? ""}`;
     return remember(cacheKey, CACHE_SECONDS, async () => {

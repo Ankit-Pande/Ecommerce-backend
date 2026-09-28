@@ -14,8 +14,9 @@ type AddressInput = {
 
 const MAX_ADDRESSES = 5;
 
-// Har write user lock ke andar — ek hi waqt me do default address na ban jayein.
+// Har badlav user lock ke andar, taaki do default address na ban jayein.
 export const addressService = {
+  // User ke saare address (default pehle).
   async list(userId: string) {
     return prisma.address.findMany({
       where: { userId },
@@ -23,7 +24,7 @@ export const addressService = {
     });
   },
 
-  // Pehla address apne aap default.
+  // Naya address (max 5, pehla apne aap default).
   async create(userId: string, data: AddressInput) {
     return prisma.$transaction(async (tx) => {
       await lockUser(tx, userId);
@@ -40,6 +41,7 @@ export const addressService = {
     });
   },
 
+  // Address badlo.
   async update(userId: string, id: string, data: Partial<AddressInput>) {
     return prisma.$transaction(async (tx) => {
       await lockUser(tx, userId);
@@ -60,7 +62,7 @@ export const addressService = {
     });
   },
 
-  // Default address hataya to sabse naya wala default ban jaata hai.
+  // Address hatao; default hataya to sabse naya default ban jaata hai.
   async remove(userId: string, id: string) {
     await prisma.$transaction(async (tx) => {
       await lockUser(tx, userId);

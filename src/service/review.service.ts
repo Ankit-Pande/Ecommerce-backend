@@ -5,6 +5,7 @@ import { bumpStorefrontCache } from "../config/cache";
 import { paginate } from "../utils/paginate";
 import { ACTIVE_CATEGORY } from "../utils/price";
 
+// Slug se chalu product ki id, na mile to 404.
 async function activeProductId(slug: string) {
   const product = await prisma.product.findFirst({
     where: { slug, isActive: true, category: ACTIVE_CATEGORY },
@@ -14,13 +15,12 @@ async function activeProductId(slug: string) {
   return product.id;
 }
 
-// Product row lock. Review likhna aur hataana dono isse shuru hote hain, warna ek saath
-// chalne par ratingSum/ratingCount ki ginti galat ho jaati hai.
+// Product row lock — ek saath do review badlein to rating ki ginti galat na ho.
 async function lockProduct(tx: Prisma.TransactionClient, productId: string) {
   await tx.$queryRaw`SELECT "id" FROM "Product" WHERE "id" = ${productId} FOR UPDATE`;
 }
 
-// Rating sum/count badlo aur average dobara nikaalo (update row lock le leta hai).
+// Product ki rating ginti badlo aur average dobara nikalo.
 async function changeRating(
   tx: Prisma.TransactionClient,
   productId: string,
@@ -39,7 +39,7 @@ async function changeRating(
 }
 
 export const reviewService = {
-  // Naye review pehle. user.id frontend ko "meri review" pehchanne ke liye.
+  // Product ke review, naye pehle.
   async list(slug: string, cursor: string | undefined, limit: number) {
     const reviews = await prisma.review.findMany({
       where: { product: { slug, isActive: true } },
@@ -57,8 +57,7 @@ export const reviewService = {
     return paginate(reviews, limit);
   },
 
-  // Sirf delivered order wala customer review de sakta hai (fake rating nahi).
-  // Dobara diya to purana review update hota hai.
+  // Review do (sirf delivered order wala customer); dobara diya to purana update.
   async save(userId: string, slug: string, rating: number, comment?: string) {
     const productId = await activeProductId(slug);
     const delivered = await prisma.orderItem.findFirst({
@@ -83,6 +82,7 @@ export const reviewService = {
     return review;
   },
 
+  // Apna review hatao.
   async remove(userId: string, slug: string) {
     const productId = await activeProductId(slug);
     await prisma.$transaction(async (tx) => {
@@ -95,14 +95,14 @@ export const reviewService = {
     await bumpStorefrontCache();
   },
 
-  // Admin: galat/abusive review hatao.
+  // Admin galat review hataye.
   async removeByAdmin(reviewId: string) {
     await prisma.$transaction(async (tx) => {
       const found = await tx.review.findUnique({ where: { id: reviewId }, select: { productId: true } });
       if (!found) throw new AppError("Review not found", 404);
       await lockProduct(tx, found.productId);
 
-      // Lock milne tak user ne khud hata di ya rating badal di ho sakti hai — dobara padho.
+      // Lock ke baad dobara padho — beech me user ne badal diya ho sakta hai.
       const review = await tx.review.findUnique({ where: { id: reviewId }, select: { rating: true } });
       if (!review) throw new AppError("Review not found", 404);
       await tx.review.delete({ where: { id: reviewId } });

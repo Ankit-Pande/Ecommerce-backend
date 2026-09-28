@@ -19,10 +19,9 @@ import {
 
 const router = Router();
 
-// Webhook app.ts me alag hai (raw body + bina login). Yahan sab login wale.
+// Sab order routes login wale (webhook app.ts me alag hai).
 router.use(authCheck);
 
-// Checkout Razorpay order banata hai — limit zaroori.
 router.post(
   "/checkout",
   rateLimiter({ bucket: "checkout", windowSec: 60, max: 10 }),

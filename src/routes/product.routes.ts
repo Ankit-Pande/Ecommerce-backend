@@ -24,7 +24,7 @@ const router = Router();
 router.get("/batch", validate(batchProductSchema), getProductsBySlugs);
 router.get("/recently-viewed", authCheck, getRecentlyViewed);
 
-// Browse ke liye login nahi chahiye. Login ho to "recently viewed" me judta hai.
+// Login zaroori nahi; login ho to "recently viewed" me judta hai.
 router.get("/:slug", optionalAuth, validate(productSlugSchema), getProduct);
 router.get("/:slug/related", validate(productSlugSchema), getRelatedProducts);
 router.get("/:slug/reviews", validate(listReviewSchema), listReviews);

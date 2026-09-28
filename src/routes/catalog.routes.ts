@@ -6,8 +6,7 @@ import { catalogFiltersSchema, catalogSchema } from "../validation/catalog.valid
 
 const router = Router();
 
-// Bina search ke listing cache se aati hai, par har naya search text DB tak jaata hai —
-// isliye sirf search wali request par alag limit.
+// Search (q) wali request par alag limit — har naya search DB tak jaata hai.
 const searchLimiter = rateLimiter({
   bucket: "catalog-search",
   windowSec: 60,
@@ -17,7 +16,6 @@ const searchLimiter = rateLimiter({
 const limitSearchOnly: RequestHandler = (req, res, next) =>
   req.query.q ? searchLimiter(req, res, next) : next();
 
-// Public: listing/search aur sidebar ke filter options.
 router.get("/filters", validate(catalogFiltersSchema), getFilters);
 router.get("/", limitSearchOnly, validate(catalogSchema), getCatalog);
 

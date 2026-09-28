@@ -12,17 +12,14 @@ import { healthRoutes } from "./routes/health.routes";
 
 export const app = express();
 
-// Proxy (Railway) ke peeche — iske bina req.ip sabke liye proxy ka IP hota aur rate limit sab pe ek saath lagti.
+// Railway proxy ke peeche asli user IP mile (rate limit isi par chalti hai).
 app.set("trust proxy", env.TRUST_PROXY_HOPS);
 
-// Security headers. JSON API hai, isliye helmet ka default kaafi hai.
 app.use(helmet());
 app.use(cors(corsOptions));
 app.use(requestLogger);
 
-// Razorpay webhook JSON parser se PEHLE — signature raw body pe check hota hai.
-// Ye route /api wali limit se pehle lagta hai, isliye apni limit chahiye. Razorpay itna
-// kabhi nahi bhejta — ye sirf flood rokne ke liye hai.
+// Webhook express.json() se PEHLE — signature raw body par check hota hai.
 app.post(
   "/api/order/webhook",
   rateLimiter({ bucket: "webhook", windowSec: 60, max: 300, allowOnRedisDown: true }),
@@ -34,7 +31,7 @@ app.use(express.json({ limit: "1mb" }));
 
 app.use("/health", healthRoutes);
 
-// Poori API pe ek IP ki limit (route wali limits iske alawa).
+// Poori API par ek IP ki limit.
 app.use(
   "/api",
   rateLimiter({ bucket: "api", windowSec: 60, max: env.API_RATE_MAX, allowOnRedisDown: true }),

@@ -4,11 +4,9 @@ import { AppError } from "../utils/appError";
 import { ACTIVE_CATEGORY, CARD_SELECT, productCard } from "../utils/price";
 
 const MAX_QTY = 10;
-// Alag-alag product ki limit — checkout ka transaction itne hi items par chalta hai.
 const MAX_ITEMS = 50;
 
-// Cart me price store nahi hota — har baar live price/stock ke saath banta hai.
-// Hidden/out-of-stock item cart me dikhta hai (hataya ja sake) par total me nahi judta.
+// Cart live price se banao; band ya out-of-stock item dikhe par total me na jude.
 async function getCart(userId: string) {
   const cart = await prisma.cart.findUnique({
     where: { userId },
@@ -47,7 +45,7 @@ async function getCart(userId: string) {
   return { items, totalPaise };
 }
 
-// Product public hai aur itna stock hai ya nahi.
+// Product chalu hai aur itna stock hai? Nahi to error.
 async function checkStock(tx: Prisma.TransactionClient, productId: string, quantity: number) {
   const product = await tx.product.findFirst({
     where: { id: productId, isActive: true, category: ACTIVE_CATEGORY },
@@ -62,7 +60,7 @@ async function checkStock(tx: Prisma.TransactionClient, productId: string, quant
 export const cartService = {
   getCart,
 
-  // Pehle se cart me hai to quantity judti hai (duplicate row nahi).
+  // Cart me daalo; pehle se hai to quantity jud jaati hai (duplicate nahi).
   async addItem(userId: string, productId: string, quantity: number) {
     await prisma.$transaction(async (tx) => {
       await lockUser(tx, userId);
@@ -88,7 +86,7 @@ export const cartService = {
     return getCart(userId);
   },
 
-  // Quantity seedha set (+/- button).
+  // Quantity badlo (+/- button).
   async updateItem(userId: string, productId: string, quantity: number) {
     await prisma.$transaction(async (tx) => {
       await lockUser(tx, userId);
@@ -102,6 +100,7 @@ export const cartService = {
     return getCart(userId);
   },
 
+  // Ek item cart se hatao.
   async removeItem(userId: string, productId: string) {
     await prisma.$transaction(async (tx) => {
       await lockUser(tx, userId);
@@ -110,6 +109,7 @@ export const cartService = {
     return getCart(userId);
   },
 
+  // Poora cart khaali karo.
   async clearCart(userId: string) {
     await prisma.$transaction(async (tx) => {
       await lockUser(tx, userId);

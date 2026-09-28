@@ -4,7 +4,6 @@ import { verifyAccessToken } from "../utils/token";
 import { AppError } from "../utils/appError";
 import { tokenService } from "../service/token.service";
 
-// req.user yahi middleware set karta hai.
 declare global {
   namespace Express {
     interface Request {
@@ -13,9 +12,7 @@ declare global {
   }
 }
 
-// "Authorization: Bearer <access token>".
-// Token sahi ho tab bhi session zinda honi chahiye — logout/block/role change pe
-// session hat jaati hai aur purana token turant bekaar ho jaata hai.
+// Login zaroori: token check + session zinda hai (logout/block par turant bekaar).
 export const authCheck: RequestHandler = async (req, _res, next) => {
   try {
     const header = req.headers.authorization;

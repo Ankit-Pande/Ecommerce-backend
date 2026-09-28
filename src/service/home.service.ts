@@ -4,8 +4,7 @@ import { ACTIVE_CATEGORY, CARD_SELECT, productCard } from "../utils/price";
 
 const SECTION_SIZE = 10;
 
-// Home page ka saara data ek API me: banner, category, brand, trending, featured,
-// naye products aur offers. Har visitor ko same, isliye 5 min cache.
+// Home page ka saara data ek call me (5 min cache).
 export const homeService = {
   async getHome() {
     return remember("home", CACHE_SECONDS, async () => {
@@ -32,7 +31,7 @@ export const homeService = {
           orderBy: { name: "asc" },
           take: SECTION_SIZE,
         }),
-        // "Shop by brand" — sirf wo brand jinke paas dikhne wala product hai.
+        // Sirf wo brand jinke paas chalu product hai.
         prisma.brand.findMany({
           where: { isActive: true, products: { some: liveProduct } },
           select: { id: true, name: true, slug: true, logo: true },
@@ -57,7 +56,6 @@ export const homeService = {
           orderBy: { createdAt: "desc" },
           take: SECTION_SIZE,
         }),
-        // Offers = chalu discount wale products.
         prisma.product.findMany({
           where: {
             ...liveProduct,

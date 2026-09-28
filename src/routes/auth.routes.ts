@@ -6,7 +6,6 @@ import { sendOtpSchema, verifyOtpSchema } from "../validation/auth.validation";
 
 const router = Router();
 
-// Phone wali limit otp.service me hai; yahan sirf IP wali.
 router.post(
   "/send-otp",
   rateLimiter({ bucket: "send-otp", windowSec: 3600, max: 20 }),
@@ -21,7 +20,6 @@ router.post(
   verifyOtp,
 );
 
-// Refresh token cookie se aata hai, body nahi.
 router.post("/refresh", rateLimiter({ bucket: "refresh", windowSec: 60, max: 30 }), refreshTokens);
 router.post("/logout", logout);
 

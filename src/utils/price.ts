@@ -1,41 +1,38 @@
 import { Prisma } from "@prisma/client";
 
-// Product tabhi public hai jab uski category aur parent category dono active hon.
+// Product tabhi dikhe jab uski category aur parent category dono chalu hon.
 export const ACTIVE_CATEGORY = {
   isActive: true,
   OR: [{ parentId: null }, { parent: { isActive: true } }],
 } satisfies Prisma.CategoryWhereInput;
 
-// Isse kam stock = "kam bacha" (admin panel filter bhi yahi).
 export const LOW_STOCK_AT = 5;
 
-// Offer ki deadline nikal gayi to discount 0 — minute wali sweep chali ho ya nahi.
+// Offer ki date nikal gayi to discount 0.
 function effectiveDiscount(discountPercent: number, offerEndsAt?: Date | null): number {
   if (offerEndsAt && offerEndsAt.getTime() <= Date.now()) return 0;
   return discountPercent;
 }
 
-export function finalPrice(
-  pricePaise: number,
-  discountPercent: number,
-  offerEndsAt?: Date | null,
-): number {
+// Discount ke baad ka price (paise me).
+export function finalPrice(pricePaise: number, discountPercent: number, offerEndsAt?: Date | null): number {
   const percent = effectiveDiscount(discountPercent, offerEndsAt);
   return pricePaise - Math.round((pricePaise * percent) / 100);
 }
 
-// Customer ko exact stock nahi dikhate, sirf status.
+// Customer ko exact stock nahi, sirf status dikhta hai.
 export function stockStatus(stock: number): "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK" {
   if (stock <= 0) return "OUT_OF_STOCK";
   if (stock <= LOW_STOCK_AT) return "LOW_STOCK";
   return "IN_STOCK";
 }
 
+// Average rating (1 decimal) aur kitne review.
 function rating(sum: number, count: number) {
   return { average: count === 0 ? 0 : Math.round((sum / count) * 10) / 10, count };
 }
 
-// productCard() ko jo fields chahiye — har card wali query yahi select karti hai.
+// Product card ke liye DB se ye fields mangao.
 export const CARD_SELECT = {
   id: true,
   name: true,
@@ -49,8 +46,7 @@ export const CARD_SELECT = {
   ratingCount: true,
 } satisfies Prisma.ProductSelect;
 
-// Home, catalog, related, recently-viewed, batch — sabka ek hi product card.
-// Har list yahi bhejti hai, taaki frontend ek hi component se kaam chala sake.
+// Har list (home, catalog, cart...) ka ek hi product card shape.
 export function productCard(p: Prisma.ProductGetPayload<{ select: typeof CARD_SELECT }>) {
   return {
     id: p.id,

@@ -10,7 +10,7 @@ import { AppError } from "../utils/appError";
 type ListQuery = { cursor?: string; limit: number };
 
 // ---------- Uploads ----------
-// Bulk product se pehle images -> Cloudinary URLs.
+// Images upload karke URLs do (bulk product ke liye).
 export const uploadImages = asyncHandler(async (req: Request, res: Response) => {
   const urls = await uploadFiles(req.files as Express.Multer.File[]);
   if (urls.length === 0) throw new AppError("No images provided", 400);
@@ -29,7 +29,7 @@ export const getAdminProduct = asyncHandler(async (req: Request, res: Response) 
   res.json({ success: true, data: product });
 });
 
-// Slug pehle check — galat request ki images Cloudinary pe na chadh jayein.
+// Pehle slug check, phir image upload — galat request ki image upload na ho.
 export const createProduct = asyncHandler(async (req: Request, res: Response) => {
   await adminService.checkSlugFree(req.body.slug);
   const images = await uploadFiles(req.files as Express.Multer.File[]);
@@ -138,7 +138,7 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
   res.json({ success: true, message: "Order updated" });
 });
 
-// Razorpay dashboard se paisa lauta diya — review band karo.
+// Admin ne Razorpay se paisa lauta diya — order ka review band.
 export const markOrderRefunded = asyncHandler(async (req: Request, res: Response) => {
   await orderService.markRefunded(req.params.id);
   res.json({ success: true, message: "Refund recorded" });

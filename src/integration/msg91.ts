@@ -2,8 +2,7 @@ import { env } from "../config/env";
 import { logger } from "../config/winston";
 import { AppError } from "../utils/appError";
 
-// MSG91 OTP (DLT template). Local/dev me SMS nahi jaata, OTP log me dikhta hai.
-// mobile = 10 digit; MSG91 ko 91 ke saath chahiye.
+// MSG91 se OTP SMS bhejo (dev me SMS nahi, OTP log me dikhta hai).
 export async function sendOtpSms(mobile: string, otp: string): Promise<void> {
   if (env.NODE_ENV !== "production") {
     logger.info(`DEV OTP -> ${mobile}: ${otp}`);

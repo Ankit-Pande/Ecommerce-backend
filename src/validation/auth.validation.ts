@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// 10 digit ya +91/91 ke saath. Service ise 10 digit me badal deti hai.
+// 10 digit number, +91/91 ke saath bhi chalega.
 const loginPhone = z
   .string()
   .trim()

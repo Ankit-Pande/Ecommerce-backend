@@ -1,12 +1,11 @@
 import winston from "winston";
 import { env } from "./env";
 
-// Error object JSON me "{}" ban jaata hai — message aur stack alag se likho,
-// warna Railway logs me asli wajah dikhti hi nahi.
+// Error log me "{}" na dikhe, isliye message aur stack alag se likho.
 const showErrors = (_key: string, value: unknown) =>
   value instanceof Error ? { message: value.message, stack: value.stack } : value;
 
-// Production: JSON console pe (Railway khud collect karta hai). Dev: rangeen text.
+// Logger: production me JSON, dev me padhne layak text.
 export const logger = winston.createLogger({
   level: env.LOG_LEVEL,
   format: winston.format.combine(

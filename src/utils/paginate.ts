@@ -1,4 +1,4 @@
-// limit+1 rows mangwate hain — ek extra aaya matlab aage aur page hai.
+// limit+1 row aayi to aage aur page hai — nextCursor bana do.
 export function paginate<T extends { id: string }>(rows: T[], limit: number) {
   const hasMore = rows.length > limit;
   const items = hasMore ? rows.slice(0, limit) : rows;
