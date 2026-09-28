@@ -1,7 +1,5 @@
 import { z } from "zod";
-import { csv, idParams, page, uuid } from "./common";
-
-const orderStatus = z.enum(["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"]);
+import { csv, idParams, orderStatus, page, uuid } from "./common";
 
 // idempotencyKey: frontend har checkout click pe ek hi key bhejta hai —
 // double click / retry pe dusra order nahi banta.

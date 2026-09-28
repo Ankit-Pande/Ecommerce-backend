@@ -1,15 +1,7 @@
 import { prisma } from "../config/db";
 import { AppError } from "../utils/appError";
 import { bumpStorefrontCache, CACHE_SECONDS, remember } from "../config/cache";
-import {
-  ACTIVE_CATEGORY,
-  CARD_SELECT,
-  effectiveDiscount,
-  finalPrice,
-  productCard,
-  rating,
-  stockStatus,
-} from "../utils/price";
+import { ACTIVE_CATEGORY, CARD_SELECT, productCard } from "../utils/price";
 
 const VIEW_KEEP_DAYS = 90;
 
@@ -30,7 +22,7 @@ export const productService = {
               id: true,
               name: true,
               slug: true,
-              parent: { select: { id: true, name: true, slug: true, isActive: true } },
+              parent: { select: { id: true, name: true, slug: true } },
             },
           },
           brand: { select: { id: true, name: true, slug: true, logo: true, isActive: true } },
@@ -39,33 +31,17 @@ export const productService = {
       // throw yahan nahi — null cache me jaata hai, isliye galat slug dobara DB tak nahi pahunchta.
       if (!row) return null;
 
-      const { category, brand } = row;
+      const { description, images, color, isTrending, isFeatured, category, brand } = row;
       return {
-        id: row.id,
-        name: row.name,
-        slug: row.slug,
-        description: row.description,
-        images: row.images,
-        pricePaise: row.pricePaise,
-        offerEndsAt: row.offerEndsAt,
-        discountPercent: effectiveDiscount(row.discountPercent, row.offerEndsAt),
-        finalPricePaise: finalPrice(row.pricePaise, row.discountPercent, row.offerEndsAt),
-        stockStatus: stockStatus(row.stock),
-        color: row.color,
-        isTrending: row.isTrending,
-        isFeatured: row.isFeatured,
-        rating: rating(row.ratingSum, row.ratingCount),
-        category: {
-          id: category.id,
-          name: category.name,
-          slug: category.slug,
-          parent: category.parent?.isActive
-            ? { id: category.parent.id, name: category.parent.name, slug: category.parent.slug }
-            : null,
-        },
-        brand: brand?.isActive
-          ? { id: brand.id, name: brand.name, slug: brand.slug, logo: brand.logo }
-          : null,
+        ...productCard(row),
+        description,
+        images,
+        color,
+        isTrending,
+        isFeatured,
+        // ACTIVE_CATEGORY filter pehle hi pakka karta hai ki category aur parent dono chalu hain.
+        category,
+        brand: brand?.isActive ? { id: brand.id, name: brand.name, slug: brand.slug, logo: brand.logo } : null,
       };
     });
 

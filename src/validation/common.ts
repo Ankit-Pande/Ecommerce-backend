@@ -1,8 +1,15 @@
+import { OrderStatus } from "@prisma/client";
 import { z } from "zod";
 
 // Kai validation files me ek jaise fields.
 export const uuid = z.string().uuid();
 export const idParams = z.object({ id: uuid });
+
+// Query string me boolean "true"/"false" text aata hai.
+export const queryBoolean = z.enum(["true", "false"]).transform((v) => v === "true");
+
+// Prisma ke enum se — naya status jude to yahan apne aap aa jaata hai.
+export const orderStatus = z.nativeEnum(OrderStatus);
 
 // 10 digit Indian mobile (address, alternate phone).
 export const phone = z.string().regex(/^[6-9]\d{9}$/, "Invalid phone number");

@@ -106,12 +106,9 @@ async function readCart(db: Prisma.TransactionClient, userId: string, lock: bool
 
 // Ek user ke itne hi "khule" order — stock rok ke baithne wala spam na ho.
 async function checkOpenOrders(tx: Prisma.TransactionClient, userId: string, paymentMethod: PaymentMethod) {
-  const open = await tx.order.count({
-    where:
-      paymentMethod === "ONLINE"
-        ? { userId, paymentMethod, status: "PENDING" }
-        : { userId, paymentMethod, status: "CONFIRMED" },
-  });
+  // Online: abhi pay nahi hua (PENDING). COD: abhi ship nahi hua (CONFIRMED).
+  const status = paymentMethod === "ONLINE" ? "PENDING" : "CONFIRMED";
+  const open = await tx.order.count({ where: { userId, paymentMethod, status } });
   if (open >= env.MAX_PENDING_ORDERS) {
     throw new AppError("You have too many open orders. Complete or cancel one first.", 409);
   }
@@ -120,7 +117,9 @@ async function checkOpenOrders(tx: Prisma.TransactionClient, userId: string, pay
 // Order row lock — payment webhook, cancel aur expiry ek saath na chalein.
 async function lockOrder(tx: Prisma.TransactionClient, orderId: string) {
   await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${orderId} FOR UPDATE`;
-  return tx.order.findUniqueOrThrow({ where: { id: orderId } });
+  const order = await tx.order.findUnique({ where: { id: orderId } });
+  if (!order) throw new AppError("Order not found", 404);
+  return order;
 }
 
 // CANCELLED + stock wapas. Status CANCELLED ho chuka ho to dobara nahi bulate,
@@ -330,14 +329,10 @@ export const orderService = {
   // User (apna order) ya admin (userId nahi) — sirf PENDING/CONFIRMED aur bina payment wala.
   // Refund abhi app me nahi hai, isliye paid order yahan cancel nahi hota.
   async cancel(orderId: string, userId?: string) {
-    // userId undefined chhod dene par Prisma filter hi gira deta hai — admin ke liye wahi
-    // chahiye, par galti se undefined aa jaye to kisi aur ka order cancel ho sakta tha.
-    const ownOrder = userId ? { id: orderId, userId } : { id: orderId };
-
     await prisma.$transaction(async (tx) => {
-      const found = await tx.order.findFirst({ where: ownOrder, select: { id: true } });
-      if (!found) throw new AppError("Order not found", 404);
       const order = await lockOrder(tx, orderId);
+      // User sirf apna order cancel kare — doosre ka order "hai hi nahi" jaisa dikhe.
+      if (userId && order.userId !== userId) throw new AppError("Order not found", 404);
 
       if (order.status === "CANCELLED") throw new AppError("Order is already cancelled", 409);
       if (order.status === "SHIPPED" || order.status === "DELIVERED") {
@@ -359,10 +354,7 @@ export const orderService = {
     if (status === "CANCELLED") return orderService.cancel(orderId);
 
     await prisma.$transaction(async (tx) => {
-      const found = await tx.order.findUnique({ where: { id: orderId }, select: { id: true } });
-      if (!found) throw new AppError("Order not found", 404);
       const order = await lockOrder(tx, orderId);
-
       if (order.status === status) return;
       if (!NEXT_STATUS[order.status].includes(status)) {
         throw new AppError(`Cannot change order from ${order.status} to ${status}`, 400);
@@ -384,8 +376,6 @@ export const orderService = {
   // Admin ne Razorpay dashboard se refund kar diya — review band.
   async markRefunded(orderId: string) {
     await prisma.$transaction(async (tx) => {
-      const found = await tx.order.findUnique({ where: { id: orderId }, select: { id: true } });
-      if (!found) throw new AppError("Order not found", 404);
       const order = await lockOrder(tx, orderId);
       if (!order.needsReview) throw new AppError("Order does not need a refund", 409);
 

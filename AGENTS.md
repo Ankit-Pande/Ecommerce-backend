@@ -119,7 +119,7 @@ kyunki wahi jaanta hai SIGTERM kab aaya.
 | `cookies.ts` | `setRefreshCookie`, `clearRefreshCookie`, `readRefreshCookie` |
 | `paginate.ts` | `paginate(rows, limit)` |
 | `text.ts` | `titleCase()` — admin colour likhte waqt aur catalog filter padhte waqt, dono jagah ek hi normalization |
-| `price.ts` | `finalPrice`, `effectiveDiscount`, `stockStatus`, `rating`, `productCard`, `CARD_SELECT`, `ACTIVE_CATEGORY`, `LOW_STOCK_AT` |
+| `price.ts` | `finalPrice`, `stockStatus`, `productCard`, `CARD_SELECT`, `ACTIVE_CATEGORY`, `LOW_STOCK_AT` |
 
 ### `price.ts` sabse important file hai
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AGE_GROUPS, GENDERS, idParams, page, slug, uuid } from "./common";
+import { AGE_GROUPS, GENDERS, idParams, orderStatus, page, queryBoolean, slug, uuid } from "./common";
 
 // Multipart form me sab kuch string aata hai — isliye neeche wale chhote converters.
 
@@ -18,8 +18,6 @@ const clearableText = (max: number) =>
 // Fixed list wale field. Khaali bhejo to field hat jaata hai.
 const clearableEnum = <T extends readonly [string, ...string[]]>(values: T) =>
   z.preprocess(emptyToNull, z.enum(values).nullable());
-
-const queryBoolean = z.enum(["true", "false"]).transform((v) => v === "true");
 
 // ---------- Product ----------
 const productFields = {
@@ -147,7 +145,7 @@ export const updateBannerSchema = z.object({
 // ---------- Orders ----------
 export const adminListOrderSchema = z.object({
   query: z.object({
-    status: z.enum(["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"]).optional(),
+    status: orderStatus.optional(),
     needsReview: queryBoolean.optional(),
     ...page(),
   }),

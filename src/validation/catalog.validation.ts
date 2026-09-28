@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AGE_GROUPS, csv, GENDERS, page, slug } from "./common";
+import { AGE_GROUPS, csv, GENDERS, page, queryBoolean, slug } from "./common";
 import { titleCase } from "../utils/text";
 
 // "tv", "ac", "lg" asli search hain. 2 akshar par trigram index nahi lagta, par aise
@@ -29,10 +29,7 @@ export const catalogSchema = z.object({
       // Paise me — /catalog/filters bhi paise deta hai, dono ek jaisa rahe.
       minPricePaise: z.coerce.number().int().min(0).max(1000000000).optional(),
       maxPricePaise: z.coerce.number().int().min(0).max(1000000000).optional(),
-      discount: z
-        .enum(["true", "false"])
-        .transform((v) => v === "true")
-        .optional(),
+      discount: queryBoolean.optional(),
       sort: z.enum(["latest", "price_asc", "price_desc", "discount", "rating"]).default("latest"),
       ...page(),
     })

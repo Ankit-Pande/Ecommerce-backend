@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma, lockUser } from "../config/db";
 import { AppError } from "../utils/appError";
-import { ACTIVE_CATEGORY, effectiveDiscount, finalPrice, stockStatus } from "../utils/price";
+import { ACTIVE_CATEGORY, CARD_SELECT, productCard } from "../utils/price";
 
 const MAX_QTY = 10;
 // Alag-alag product ki limit — checkout ka transaction itne hi items par chalta hai.
@@ -19,15 +19,8 @@ async function getCart(userId: string) {
           quantity: true,
           product: {
             select: {
-              id: true,
-              name: true,
-              slug: true,
+              ...CARD_SELECT,
               color: true,
-              images: true,
-              pricePaise: true,
-              discountPercent: true,
-              offerEndsAt: true,
-              stock: true,
               isActive: true,
               category: { select: { isActive: true, parent: { select: { isActive: true } } } },
             },
@@ -42,24 +35,12 @@ async function getCart(userId: string) {
     const isAvailable =
       product.isActive && product.category.isActive && product.category.parent?.isActive !== false;
     const maxQuantity = Math.min(MAX_QTY, product.stock);
-    const finalPricePaise = finalPrice(product.pricePaise, product.discountPercent, product.offerEndsAt);
-    if (isAvailable && quantity <= maxQuantity) totalPaise += finalPricePaise * quantity;
+    const card = productCard(product);
+    if (isAvailable && quantity <= maxQuantity) totalPaise += card.finalPricePaise * quantity;
 
     return {
       quantity,
-      product: {
-        id: product.id,
-        name: product.name,
-        slug: product.slug,
-        color: product.color,
-        images: product.images,
-        pricePaise: product.pricePaise,
-        discountPercent: effectiveDiscount(product.discountPercent, product.offerEndsAt),
-        finalPricePaise,
-        stockStatus: stockStatus(product.stock),
-        maxQuantity,
-        isAvailable,
-      },
+      product: { ...card, color: product.color, images: product.images, maxQuantity, isAvailable },
     };
   });
 

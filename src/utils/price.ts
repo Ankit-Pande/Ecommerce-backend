@@ -10,7 +10,7 @@ export const ACTIVE_CATEGORY = {
 export const LOW_STOCK_AT = 5;
 
 // Offer ki deadline nikal gayi to discount 0 — minute wali sweep chali ho ya nahi.
-export function effectiveDiscount(discountPercent: number, offerEndsAt?: Date | null): number {
+function effectiveDiscount(discountPercent: number, offerEndsAt?: Date | null): number {
   if (offerEndsAt && offerEndsAt.getTime() <= Date.now()) return 0;
   return discountPercent;
 }
@@ -31,7 +31,7 @@ export function stockStatus(stock: number): "IN_STOCK" | "LOW_STOCK" | "OUT_OF_S
   return "IN_STOCK";
 }
 
-export function rating(sum: number, count: number) {
+function rating(sum: number, count: number) {
   return { average: count === 0 ? 0 : Math.round((sum / count) * 10) / 10, count };
 }
 
