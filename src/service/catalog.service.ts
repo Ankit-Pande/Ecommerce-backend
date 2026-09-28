@@ -97,22 +97,27 @@ function readBudget(q: string): { text: string; minPrice?: number; maxPrice?: nu
 }
 
 // Har shabd kahin bhi mile (naam, colour, brand, category) — "red shoes" bhi mile.
-function searchWhere(words: string[]): Prisma.ProductWhereInput {
-  return {
-    AND: words.map((word) => {
+// Brand/category ke id pehle nikalte hain, taaki product search index use kare (join se poori table padhni padti).
+async function searchWhere(words: string[]): Promise<Prisma.ProductWhereInput> {
+  const conditions = await Promise.all(
+    words.map(async (word) => {
       const has = { contains: word, mode: "insensitive" as const };
+      const [brands, categories] = await Promise.all([
+        prisma.brand.findMany({ where: { name: has, isActive: true }, select: { id: true } }),
+        prisma.category.findMany({ where: { OR: [{ name: has }, { parent: { name: has } }] }, select: { id: true } }),
+      ]);
       return {
         OR: [
           { name: has },
           { description: has },
           { color: has },
-          { brand: { name: has, isActive: true } },
-          { category: { name: has } },
-          { category: { parent: { name: has } } },
+          { brandId: { in: brands.map((b) => b.id) } },
+          { categoryId: { in: categories.map((c) => c.id) } },
         ],
       };
     }),
-  };
+  );
+  return { AND: conditions };
 }
 
 // Search text se kaam ke shabd (max 6).
@@ -146,12 +151,17 @@ function baseFilters(query: {
 async function typoMatchIds(text: string): Promise<string[]> {
   const [, rows] = await prisma.$transaction([
     prisma.$executeRaw`SET LOCAL statement_timeout = '2s'`,
+    // Teen alag hisse (naam, brand, category) — ek OR me likhne par index nahi lagta.
     prisma.$queryRaw<{ id: string }[]>`
-      SELECT p."id" FROM "Product" p
-      LEFT JOIN "Brand" b ON b."id" = p."brandId"
-      LEFT JOIN "Category" c ON c."id" = p."categoryId"
-      WHERE p."isActive" = true AND (p."name" % ${text} OR b."name" % ${text} OR c."name" % ${text})
-      ORDER BY similarity(p."name", ${text}) DESC
+      SELECT p."id", similarity(p."name", ${text}) AS score FROM "Product" p
+      WHERE p."isActive" = true AND p."name" % ${text}
+      UNION
+      SELECT p."id", similarity(p."name", ${text}) FROM "Product" p
+      WHERE p."isActive" = true AND p."brandId" IN (SELECT "id" FROM "Brand" WHERE "name" % ${text})
+      UNION
+      SELECT p."id", similarity(p."name", ${text}) FROM "Product" p
+      WHERE p."isActive" = true AND p."categoryId" IN (SELECT "id" FROM "Category" WHERE "name" % ${text})
+      ORDER BY 2 DESC
       LIMIT 50`,
   ]);
   return rows.map((row) => row.id);
@@ -202,7 +212,7 @@ export const catalogService = {
       }
 
       const rows = await prisma.product.findMany({
-        where: { AND: words.length > 0 ? [...filters, searchWhere(words)] : filters },
+        where: { AND: words.length > 0 ? [...filters, await searchWhere(words)] : filters },
         select: LIST_SELECT,
         orderBy: SORTS[query.sort],
         take: query.limit + 1,

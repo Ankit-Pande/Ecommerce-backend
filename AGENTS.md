@@ -718,7 +718,8 @@ Minute wale job par `running` flag hai — pichhla khatam na hua ho to naya shur
 | Jagah | 2 lakh par | Status |
 | --- | --- | --- |
 | Catalog search `ILIKE '%..%'` | 3+ char par GIN trgm index chalta hai | 2 char ki search ("tv", "ac") cache + 30/min limit ke peeche |
-| `typoMatchIds` | Sabse mehngi query | 2s timeout + 30/min rate limit lagi hui hai |
+| Search me brand/category | Join ke saath OR = poori table scan (2 lakh par ~1 sec) | Pehle brand/category ke id nikalo, phir `brandId IN (...)` — index lagta hai (~20 ms) |
+| `typoMatchIds` | Sabse mehngi query | Naam/brand/category teen `UNION` hisse (index lagta hai) + 2s timeout + 30/min limit |
 | `filters()` ka `groupBy(color)` + `aggregate` | Bina category ke poori table par | 5 min cache |
 | Cursor pagination | Theek hai | `OFFSET` kabhi mat use karna |
 | `seed.ts` | 2 lakh row ek `createMany` me nahi | 1000-1000 ke batch me |
