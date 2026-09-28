@@ -196,7 +196,7 @@ DB row **aur** Redis key dono uda deta hai, isliye purana token agli request par
 | `api` | poore `/api` par | 300/min/IP | jaane do |
 | `send-otp` | `POST /auth/send-otp` | 20/hour/IP | rok do |
 | `verify-otp` | `POST /auth/verify-otp` | 10/min/IP | rok do |
-| `refresh` | `POST /auth/refresh` | 30/min/IP | rok do |
+| `refresh` | `POST /auth/refresh` | 120/min/IP | rok do |
 | `checkout` | `POST /order/checkout` | 10/min/**user** | rok do |
 | `catalog-search` | `GET /catalog` jab `q` ho | 30/min/IP | jaane do |
 | `admin-upload` | `POST /admin/uploads` | 30/min/user | rok do |

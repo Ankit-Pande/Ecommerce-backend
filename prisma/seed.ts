@@ -704,12 +704,12 @@ async function main() {
 
   // ---------------- Banner ----------------
   const banners = [
-    { text: "Festive Sale", link: "/catalog?discount=true" },
-    { text: "New Arrivals", link: "/catalog?sort=latest" },
-    { text: "Trending Now", link: "/catalog?section=trending" },
-    { text: "Electronics Deals", link: "/catalog?category=electronics" },
-    { text: "Fashion Under 999", link: "/catalog?category=fashion&maxPricePaise=99900" },
-    { text: "Kids Corner", link: "/catalog?category=kids" },
+    { text: "Festive Sale", link: "/products?discount=true" },
+    { text: "New Arrivals", link: "/products?sort=latest" },
+    { text: "Trending Now", link: "/products?section=trending" },
+    { text: "Electronics Deals", link: "/products?category=electronics" },
+    { text: "Fashion Under 999", link: "/products?category=fashion&maxPrice=999" },
+    { text: "Kids Corner", link: "/products?category=kids" },
   ].map((banner, i) => ({
     id: randomUUID(),
     image: imageUrl(slugify(banner.text), 0),

@@ -110,7 +110,7 @@ export const updateBrandSchema = z.object({
 });
 
 // ---------- Banner ----------
-// Site ka apna path ("/catalog?..") ya poora http(s) URL.
+// Site ka apna path ("/products?..") ya poora http(s) URL.
 const bannerLink = z
   .string()
   .refine(
