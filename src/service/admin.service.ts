@@ -358,6 +358,34 @@ export const adminService = {
 
   // ---------- Orders ----------
   // Saare orders (status / review filter ke saath).
+  // Dashboard ke chaar number. Sab indexed column par chhoti ginti hain (poori table nahi).
+  async getStats() {
+    // Din India ke time se shuru hota hai, server UTC par chale tab bhi.
+    const IST_OFFSET_MS = 330 * 60 * 1000;
+    const istNow = new Date(Date.now() + IST_OFFSET_MS);
+    istNow.setUTCHours(0, 0, 0, 0);
+    const startOfDay = new Date(istNow.getTime() - IST_OFFSET_MS);
+
+    const [today, awaitingPayment, toShip, needsReview] = await Promise.all([
+      prisma.order.aggregate({
+        where: { createdAt: { gte: startOfDay }, status: { in: ["CONFIRMED", "SHIPPED", "DELIVERED"] } },
+        _count: true,
+        _sum: { totalPaise: true },
+      }),
+      prisma.order.count({ where: { status: "PENDING" } }),
+      prisma.order.count({ where: { status: "CONFIRMED" } }),
+      prisma.order.count({ where: { needsReview: true } }),
+    ]);
+
+    return {
+      ordersToday: today._count,
+      revenueTodayPaise: today._sum.totalPaise ?? 0,
+      awaitingPayment,
+      toShip,
+      needsReview,
+    };
+  },
+
   async listOrders(query: { status?: OrderStatus; needsReview?: boolean; cursor?: string; limit: number }) {
     const rows = await prisma.order.findMany({
       where: {

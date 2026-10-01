@@ -258,6 +258,7 @@ model Order {
   // Admin list bina filter ke isi par sort hoti hai.
   @@index([createdAt])
   @@index([status, paymentExpiresAt])
+  @@index([needsReview, createdAt])
 }
 
 model OrderItem {

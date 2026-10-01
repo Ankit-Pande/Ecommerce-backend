@@ -122,6 +122,10 @@ export const deleteBanner = asyncHandler(async (req: Request, res: Response) => 
 });
 
 // ---------- Orders ----------
+export const getAdminStats = asyncHandler(async (_req: Request, res: Response) => {
+  res.json({ success: true, data: await adminService.getStats() });
+});
+
 export const listAdminOrders = asyncHandler(async (req: Request, res: Response) => {
   const query = req.query as unknown as ListQuery & { status?: OrderStatus; needsReview?: boolean };
   const result = await adminService.listOrders(query);

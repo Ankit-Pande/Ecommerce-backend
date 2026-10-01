@@ -19,6 +19,7 @@ import {
   listAdminBrands,
   listAdminCategories,
   listAdminOrders,
+  getAdminStats,
   listAdminProducts,
   listAdminUsers,
   markOrderRefunded,
@@ -94,6 +95,7 @@ router.patch("/banners/:id", upload.single("image"), validate(updateBannerSchema
 router.delete("/banners/:id", validate(idParamSchema), deleteBanner);
 
 // Orders
+router.get("/stats", getAdminStats);
 router.get("/orders", validate(adminListOrderSchema), listAdminOrders);
 router.get("/orders/:id", validate(idParamSchema), getAdminOrder);
 router.patch("/orders/:id/status", validate(updateOrderStatusSchema), updateOrderStatus);

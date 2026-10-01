@@ -316,7 +316,7 @@ badal deta hai.
 
 ### Admin (`authCheck` + `roleCheck`)
 
-`/api/admin/uploads` · `products[/:id]` · `products/bulk` · `categories[/:id]` · `brands[/:id]` ·
+`/api/admin/stats` · `/api/admin/uploads` · `products[/:id]` · `products/bulk` · `categories[/:id]` · `brands[/:id]` ·
 `banners[/:id]` · `orders[/:id]` · `orders/:id/status` · `orders/:id/refunded` · `users[/:id]` ·
 `users/:id/block` · `users/:id/role` (**sirf SUPER_ADMIN**) · `reviews/:id`
 
@@ -724,7 +724,8 @@ Minute wale job par `running` flag hai — pichhla khatam na hua ho to naya shur
 | Cursor pagination | Theek hai | `OFFSET` kabhi mat use karna |
 | `seed.ts` | 2 lakh row ek `createMany` me nahi | 1000-1000 ke batch me |
 
-**`COUNT(*)` kahin mat lagana.** "1,84,392 products found" dikhane ke liye 2 lakh row ginni
+**`COUNT(*)` kahin mat lagana** (sirf apvaad: admin dashboard ke 4 number — aaj ke orders,
+pending payment, ship karne wale, needs review — jo indexed column par chhoti ginti hain). "1,84,392 products found" dikhane ke liye 2 lakh row ginni
 padti hai, har request par. Frontend par "200+ results" ya sirf `nextCursor` dikhao.
 
 `DATABASE_URL` me pool explicit rakho, default par mat chhodo:
