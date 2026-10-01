@@ -45,15 +45,22 @@ function checkoutResponse(order: Order) {
   };
 }
 
-// Cart padho aur total nikalo; lock=true par products lock (beech me price/stock na badle).
-async function readCart(db: Prisma.TransactionClient, userId: string, lock: boolean) {
-  const cart = await db.cart.findUnique({
-    where: { userId },
-    include: { items: { orderBy: { productId: "asc" } } },
-  });
-  if (!cart || cart.items.length === 0) throw new AppError("Cart is empty", 400);
+type BuyNow = { productId: string; quantity: number };
 
-  const productIds = cart.items.map((item) => item.productId);
+// Order ki lines: cart ke items, ya "Buy now" me sirf ek product (cart ko chhue bina).
+// lock=true par products lock, taaki beech me price/stock na badle.
+async function readLines(db: Prisma.TransactionClient, userId: string, lock: boolean, buyNow?: BuyNow) {
+  const items = buyNow
+    ? [{ cartItemId: null, ...buyNow }]
+    : ((
+        await db.cart.findUnique({
+          where: { userId },
+          include: { items: { orderBy: { productId: "asc" } } },
+        })
+      )?.items.map((item) => ({ cartItemId: item.id, productId: item.productId, quantity: item.quantity })) ?? []);
+  if (items.length === 0) throw new AppError("Cart is empty", 400);
+
+  const productIds = items.map((item) => item.productId);
 
   // id ke kram me lock, taaki do checkout aapas me na atakein (deadlock).
   if (lock) {
@@ -77,16 +84,16 @@ async function readCart(db: Prisma.TransactionClient, userId: string, lock: bool
 
   let totalPaise = 0;
   const lines = [];
-  for (const item of cart.items) {
+  for (const item of items) {
     const product = byId.get(item.productId);
     if (!product || product.stock < item.quantity) {
-      throw new AppError("Some products in your cart are unavailable or out of stock", 409);
+      throw new AppError("Some products are unavailable or out of stock", 409);
     }
 
     const pricePaise = finalPrice(product.pricePaise, product.discountPercent, product.offerEndsAt);
     totalPaise += pricePaise * item.quantity;
     lines.push({
-      cartItemId: item.id,
+      cartItemId: item.cartItemId,
       stockBefore: product.stock,
       productId: product.id,
       productName: product.name,
@@ -140,13 +147,19 @@ function sameCheckout(order: Order, addressId: string, paymentMethod: PaymentMet
 }
 
 export const orderService = {
-  // Cart se order banao: checks -> Razorpay order -> transaction me stock kaato + order save.
-  async checkout(userId: string, addressId: string, paymentMethod: PaymentMethod, idempotencyKey: string) {
+  // Cart (ya Buy now ka ek product) se order: checks -> Razorpay order -> transaction me stock kaato + order save.
+  async checkout(
+    userId: string,
+    addressId: string,
+    paymentMethod: PaymentMethod,
+    idempotencyKey: string,
+    buyNow?: BuyNow,
+  ) {
     const sameKey = { userId_idempotencyKey: { userId, idempotencyKey } };
     const previous = await prisma.order.findUnique({ where: sameKey });
     if (previous) return sameCheckout(previous, addressId, paymentMethod);
 
-    const preview = await readCart(prisma, userId, false);
+    const preview = await readLines(prisma, userId, false, buyNow);
 
     // Pehle check, taaki galat request par bekaar Razorpay order na bane.
     await checkOpenOrders(prisma, userId, paymentMethod);
@@ -173,7 +186,7 @@ export const orderService = {
       const shipTo = await tx.address.findFirst({ where: { id: addressId, userId } });
       if (!shipTo) throw new AppError("Address not found", 404);
 
-      const cart = await readCart(tx, userId, true);
+      const cart = await readLines(tx, userId, true, buyNow);
       // Razorpay order jitne ka bana, order bhi utne ka hi ho.
       if (cart.totalPaise !== preview.totalPaise) {
         throw new AppError("Prices changed. Please review your cart and try again.", 409);
@@ -216,8 +229,11 @@ export const orderService = {
         },
       });
 
-      // Sirf wahi items hatao jo order me gaye.
-      await tx.cartItem.deleteMany({ where: { id: { in: cart.lines.map((line) => line.cartItemId) } } });
+      // Sirf wahi cart items hatao jo order me gaye (Buy now me koi nahi).
+      const orderedCartItems = cart.lines.flatMap((line) => (line.cartItemId ? [line.cartItemId] : []));
+      if (orderedCartItems.length > 0) {
+        await tx.cartItem.deleteMany({ where: { id: { in: orderedCartItems } } });
+      }
       return { order, isNew: true, stockStatusChanged };
     });
 

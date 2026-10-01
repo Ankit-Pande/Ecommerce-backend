@@ -6,8 +6,8 @@ import { asyncHandler } from "../utils/asyncHandler";
 import { logger } from "../config/winston";
 
 export const checkout = asyncHandler(async (req: Request, res: Response) => {
-  const { addressId, paymentMethod, idempotencyKey } = req.body;
-  const result = await orderService.checkout(req.user!.userId, addressId, paymentMethod, idempotencyKey);
+  const { addressId, paymentMethod, idempotencyKey, buyNow } = req.body;
+  const result = await orderService.checkout(req.user!.userId, addressId, paymentMethod, idempotencyKey, buyNow);
   res.status(201).json({ success: true, data: result });
 });
 

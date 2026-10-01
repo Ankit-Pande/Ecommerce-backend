@@ -481,7 +481,7 @@ review update + delete hone par `ratingCount` galat ho jaata.
 
 | Function | Kaam |
 | --- | --- |
-| `checkout()` | Cart → order, stock reserve, Razorpay order |
+| `checkout()` | Cart (ya `buyNow` ka ek product) → order, stock reserve, Razorpay order |
 | `retryPayment()` | Popup band ho gaya tha — deadline ke andar dobara |
 | `verifyPayment()` | Browser ka signature check (sirf information) |
 | `handlePaymentCaptured()` | Webhook — **yahin order CONFIRM hota hai** |
@@ -552,7 +552,7 @@ Browser me baitha banda `fetch` badal sakta hai, Razorpay ka server nahi.
 
 ```
 1. same idempotencyKey pehle aayi?     → wahi purana order lauta do
-2. cart padho, total nikalo
+2. cart padho, total nikalo            (buyNow ho to sirf wo ek product; cart nahi chhoota)
 3. address + open-order limit check    ← Razorpay call se PEHLE
 4. ONLINE ho to Razorpay order banao
 5. TRANSACTION:
