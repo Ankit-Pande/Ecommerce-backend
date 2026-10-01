@@ -40,7 +40,7 @@ apnakart-backend/
 ├── prisma/
 │   ├── schema.prisma          14 model
 │   ├── migrations/            git me commit hona zaroori
-│   └── seed.ts                category, brand, product, order, review
+│   └── seed.ts                15 category / 82 sub, 8000 product, order, review
 ├── src/
 │   ├── config/         7 file   setup — connection banate hain, band nahi karte
 │   ├── utils/          8 file   pure function — DB/Redis import bilkul nahi
@@ -124,7 +124,8 @@ kyunki wahi jaanta hai SIGTERM kab aaya.
 ### `price.ts` sabse important file hai
 
 Discount ka hisaab home, catalog, cart, order, related — sab jagah **isi se** hota hai.
-Agar formula 5 jagah copy ho gaya to kisi ek jagah bug rahega hi.
+Agar formula 5 jagah copy ho gaya to kisi ek jagah bug rahega hi. Seed bhi yahi `finalPrice` use karta hai.
+Discount poore rupee me katta hai (₹499 par 48% → ₹259, ₹259.48 nahi).
 
 `productCard()` ek hi shape deta hai: `pricePaise` = MRP, `finalPricePaise` = discount ke baad,
 `discountPercent`, `stockStatus`, `image`, `rating`. Home, catalog, related, recently-viewed aur
