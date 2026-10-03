@@ -98,6 +98,11 @@ export const createBrandSchema = z.object({
   body: z.object({ name: z.string().trim().min(2).max(80), slug }).strict(),
 });
 
+export const updateBrandSchema = z.object({
+  params: idParams,
+  body: z.object({ name: z.string().trim().min(2).max(80).optional(), isActive: z.boolean().optional() }).strict(),
+});
+
 // ---------- Banner ----------
 // Site ka apna path ("/products?..") ya poora http(s) URL.
 const bannerLink = z
@@ -112,6 +117,32 @@ export const createBannerSchema = z.object({
     .object({
       link: bannerLink.optional(),
       position: z.coerce.number().int().min(0).default(0),
+    })
+    .strict(),
+});
+
+export const updateBannerSchema = z.object({
+  params: idParams,
+  body: z
+    .object({
+      link: bannerLink.nullable().optional(),
+      position: z.number().int().min(0).optional(),
+      isActive: z.boolean().optional(),
+    })
+    .strict(),
+});
+
+// ---------- Sale ----------
+// categoryId na ho to poore store par. discountPercent 0 = sale khatam.
+export const saleSchema = z.object({
+  body: z
+    .object({
+      categoryId: uuid.optional(),
+      discountPercent: z.number().int().min(0).max(90),
+      offerEndsAt: z.coerce
+        .date()
+        .refine((date) => date.getTime() > Date.now(), "offerEndsAt must be in the future")
+        .optional(),
     })
     .strict(),
 });

@@ -62,7 +62,7 @@ All responses are `{ success, data }`, `{ success, items, nextCursor }` or `{ su
 | User | `/api/user/me` (GET, PATCH, DELETE), `/api/address`, `/api/cart` |
 | Orders | `POST /api/order/checkout`, `GET /api/order`, `POST /api/order/:id/payment`, `PATCH /api/order/:id/cancel` |
 | Webhook | `POST /api/order/webhook` (Razorpay) |
-| Admin | `/api/admin/stats`, `uploads`, `products`, `categories`, `brands`, `banners`, `orders`, `users`, `reviews` |
+| Admin | `/api/admin/stats`, `uploads`, `products`, `products/sale`, `categories`, `brands`, `banners`, `orders`, `users`, `reviews` |
 
 ## Key rules
 

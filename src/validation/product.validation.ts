@@ -19,7 +19,7 @@ export const saveReviewSchema = z.object({
   params: z.object({ slug }),
   body: z
     .object({
-      rating: z.coerce.number().int().min(1).max(5),
+      rating: z.number({ required_error: "Please select a star rating" }).int().min(1).max(5),
       comment: z.string().trim().min(3).max(1000).optional(),
     })
     .strict(),

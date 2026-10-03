@@ -18,6 +18,7 @@ const NEXT_STATUS: Record<OrderStatus, OrderStatus[]> = {
 
 // Razorpay ₹1 se kam ka order nahi banata.
 const MIN_ONLINE_PAISE = 100;
+const MAX_OPEN_COD_ORDERS = 10;
 
 const ORDER_FIELDS = {
   id: true,
@@ -107,11 +108,12 @@ async function readLines(db: Prisma.TransactionClient, userId: string, lock: boo
 }
 
 // Ek user ke zyada khule order na hon (stock rok ke baithne wala spam).
+// Online: abhi pay nahi hua (PENDING). COD: abhi ship nahi hua (CONFIRMED) — COD ki limit badi, asli customer kai order deta hai.
 async function checkOpenOrders(tx: Prisma.TransactionClient, userId: string, paymentMethod: PaymentMethod) {
-  // Online: abhi pay nahi hua (PENDING). COD: abhi ship nahi hua (CONFIRMED).
   const status = paymentMethod === "ONLINE" ? "PENDING" : "CONFIRMED";
+  const limit = paymentMethod === "ONLINE" ? env.MAX_PENDING_ORDERS : MAX_OPEN_COD_ORDERS;
   const open = await tx.order.count({ where: { userId, paymentMethod, status } });
-  if (open >= env.MAX_PENDING_ORDERS) {
+  if (open >= limit) {
     throw new AppError("You have too many open orders. Complete or cancel one first.", 409);
   }
 }

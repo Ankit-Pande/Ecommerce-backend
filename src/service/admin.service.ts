@@ -151,6 +151,23 @@ export const adminService = {
     return product;
   },
 
+  // Sale: category (ya poore store) ke saare product par ek discount, end date ke saath. 0 = sale khatam.
+  // sellPaise ka hisaab finalPrice() jaisa hi: discount poore rupee me.
+  async applySale(data: { categoryId?: string; discountPercent: number; offerEndsAt?: Date | null }) {
+    const categoryId = data.categoryId ?? null;
+    const offerEndsAt = data.discountPercent > 0 ? (data.offerEndsAt ?? null) : null;
+    const updated = await prisma.$executeRaw`
+      UPDATE "Product" SET
+        "discountPercent" = ${data.discountPercent},
+        "offerEndsAt" = ${offerEndsAt},
+        "sellPaise" = "pricePaise" - ROUND("pricePaise" * ${data.discountPercent} / 10000.0) * 100,
+        "updatedAt" = NOW()
+      WHERE ${categoryId}::text IS NULL
+         OR "categoryId" IN (SELECT "id" FROM "Category" WHERE "id" = ${categoryId} OR "parentId" = ${categoryId})`;
+    await bumpStorefrontCache();
+    return { updated };
+  },
+
   // Product delete nahi, sirf chhupao (purane orders me chahiye).
   async hideProduct(id: string) {
     await prisma.product.update({ where: { id }, data: { isActive: false } });
@@ -302,6 +319,13 @@ export const adminService = {
     return brand;
   },
 
+  // Brand badlo ya chhupao.
+  async updateBrand(id: string, data: { name?: string; isActive?: boolean }) {
+    const brand = await prisma.brand.update({ where: { id }, data });
+    await bumpStorefrontCache();
+    return brand;
+  },
+
   // Brand delete (products ho to nahi).
   async deleteBrand(id: string) {
     const products = await prisma.product.count({ where: { brandId: id } });
@@ -327,6 +351,13 @@ export const adminService = {
   // Naya banner.
   async createBanner(data: { link?: string; position: number }, image: string) {
     const banner = await prisma.banner.create({ data: { ...data, image } });
+    await bumpStorefrontCache();
+    return banner;
+  },
+
+  // Banner badlo ya chhupao.
+  async updateBanner(id: string, data: { link?: string | null; position?: number; isActive?: boolean }) {
+    const banner = await prisma.banner.update({ where: { id }, data });
     await bumpStorefrontCache();
     return banner;
   },
