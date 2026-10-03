@@ -1,0 +1,325 @@
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  // Typo wali search (similarity) aur ILIKE ke trigram index ke liye.
+  extensions = [pg_trgm]
+}
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+enum Role {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+// REFUNDED: admin ne Razorpay dashboard se paisa lauta diya.
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  COD
+  ONLINE
+}
+
+model User {
+  id             String  @id @default(uuid())
+  phone          String  @unique
+  alternatePhone String?
+  name           String?
+  email          String? @unique
+  role           Role    @default(USER)
+  isBlocked      Boolean @default(false)
+  isDeleted      Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions  Session[]
+  addresses Address[]
+  cart      Cart?
+  orders    Order[]
+  reviews   Review[]
+  views     ProductView[]
+}
+
+// Ek row = ek device ka login. Refresh token ka jti yahin rehta hai (source of truth);
+// Redis me sirf chhoti der ka cache hai.
+model Session {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jti         String    @unique
+  // Rotate se pehle wala jti — do tab ek saath refresh karein to dusre ko 60s tak
+  // wahi nayi session mil jaati hai, logout nahi hota.
+  previousJti String?
+  rotatedAt   DateTime?
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Address {
+  id        String  @id @default(uuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName  String
+  phone     String
+  line1     String
+  line2     String?
+  city      String
+  state     String
+  pincode   String
+  isDefault Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders Order[]
+
+  @@index([userId])
+}
+
+// Category aur subcategory ek hi table me (2 level).
+model Category {
+  id       String     @id @default(uuid())
+  name     String
+  slug     String     @unique
+  image    String?
+  parentId String?
+  parent   Category?  @relation("SubCategories", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("SubCategories")
+  isActive Boolean    @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products Product[]
+
+  @@index([parentId, isActive])
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin)
+}
+
+model Brand {
+  id       String  @id @default(uuid())
+  name     String
+  slug     String  @unique
+  logo     String?
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products Product[]
+
+  @@index([isActive])
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin)
+}
+
+model Product {
+  id          String @id @default(uuid())
+  name        String
+  slug        String @unique
+  description String
+
+  // Paise me (Rs.499 = 49900). sellPaise = discount ke baad ka price —
+  // admin.service likhti hai, catalog ka price filter/sort isi pe chalta hai.
+  pricePaise      Int
+  discountPercent Int       @default(0)
+  sellPaise       Int
+  offerEndsAt     DateTime?
+
+  stock      Int      @default(0)
+  color      String?
+  gender     String?
+  ageGroup   String?
+  images     String[]
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+  brandId    String?
+  brand      Brand?   @relation(fields: [brandId], references: [id])
+
+  isActive   Boolean @default(true)
+  isTrending Boolean @default(false)
+  isFeatured Boolean @default(false)
+
+  // Average har card pe AVG() se na nikle, isliye review.service ye teeno update karti hai.
+  ratingSum     Int   @default(0)
+  ratingCount   Int   @default(0)
+  ratingAverage Float @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+  reviews    Review[]
+  views      ProductView[]
+
+  @@index([categoryId, isActive])
+  @@index([brandId, isActive])
+  @@index([isActive, createdAt])
+  @@index([isActive, sellPaise])
+  @@index([isActive, discountPercent])
+  @@index([isActive, ratingAverage])
+  @@index([isActive, isTrending])
+  @@index([isActive, isFeatured])
+  @@index([discountPercent, offerEndsAt])
+  // Search ILIKE '%text%' in index ke bina poori table scan karti hai.
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([description(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([color(ops: raw("gin_trgm_ops"))], type: Gin)
+}
+
+model Cart {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items CartItem[]
+}
+
+model CartItem {
+  id        String  @id @default(uuid())
+  cartId    String
+  cart      Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity  Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cartId, productId])
+}
+
+// Stock PENDING/CONFIRMED/SHIPPED/DELIVERED me reserved rehta hai.
+// CANCELLED hote hi wapas — isliye stock sirf cancel ke waqt lautaya jaata hai.
+model Order {
+  id             String @id @default(uuid())
+  userId         String
+  user           User   @relation(fields: [userId], references: [id])
+  idempotencyKey String
+
+  addressId String?
+  address   Address? @relation(fields: [addressId], references: [id], onDelete: SetNull)
+
+  // Delivery ka snapshot — address baad me badle to order ka pata na badle.
+  shipName    String
+  shipPhone   String
+  shipLine1   String
+  shipLine2   String?
+  shipCity    String
+  shipState   String
+  shipPincode String
+
+  totalPaise    Int
+  status        OrderStatus   @default(PENDING)
+  paymentStatus PaymentStatus @default(PENDING)
+  paymentMethod PaymentMethod
+
+  // ONLINE order: is waqt tak payment na aaye to cancel + stock wapas.
+  paymentExpiresAt  DateTime?
+  razorpayOrderId   String?   @unique
+  razorpayPaymentId String?
+  // Payment aayi par order confirm nahi ho saka (late/galat amount) — admin dekhe.
+  needsReview       Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items OrderItem[]
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, createdAt])
+  // Address delete par Postgres yahan addressId NULL karta hai — index ke bina poori Order table scan.
+  @@index([addressId])
+  // Admin list bina filter ke isi par sort hoti hai.
+  @@index([createdAt])
+  @@index([status, paymentExpiresAt])
+}
+
+model OrderItem {
+  id        String  @id @default(uuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  // Order ke waqt ka naam/photo/price.
+  productName  String
+  productImage String?
+  pricePaise   Int
+  quantity     Int
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+// Razorpay ek hi event dobara bhej sakta hai — id yahan save hoti hai taaki
+// payment do baar process na ho.
+model WebhookEvent {
+  id        String   @id
+  createdAt DateTime @default(now())
+}
+
+model Review {
+  id        String  @id @default(uuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating    Int
+  comment   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, userId])
+  @@index([productId, createdAt])
+}
+
+model Banner {
+  id       String  @id @default(uuid())
+  image    String
+  link     String?
+  position Int     @default(0)
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, position])
+}
+
+model ProductView {
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  viewedAt  DateTime @updatedAt
+
+  @@id([userId, productId])
+  @@index([userId, viewedAt])
+}
