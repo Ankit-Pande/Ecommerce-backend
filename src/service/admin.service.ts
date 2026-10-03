@@ -357,7 +357,6 @@ export const adminService = {
   },
 
   // ---------- Orders ----------
-  // Saare orders (status / review filter ke saath).
   // Dashboard ke chaar number. Sab indexed column par chhoti ginti hain (poori table nahi).
   async getStats() {
     // Din India ke time se shuru hota hai, server UTC par chale tab bhi.
@@ -386,6 +385,7 @@ export const adminService = {
     };
   },
 
+  // Saare orders (status / review filter ke saath).
   async listOrders(query: { status?: OrderStatus; needsReview?: boolean; cursor?: string; limit: number }) {
     const rows = await prisma.order.findMany({
       where: {

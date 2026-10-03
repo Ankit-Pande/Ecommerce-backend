@@ -14,8 +14,7 @@ function effectiveDiscount(discountPercent: number, offerEndsAt?: Date | null): 
   return discountPercent;
 }
 
-// Discount ke baad ka price (paise me). Discount poore rupee me kat-ta hai,
-// taki customer ko ₹259.48 jaisa ajeeb daam na dikhe.
+// Discount ke baad ka price (paise me). Discount poore rupee me katta hai, taki ₹259.48 jaisa daam na dikhe.
 export function finalPrice(pricePaise: number, discountPercent: number, offerEndsAt?: Date | null): number {
   const percent = effectiveDiscount(discountPercent, offerEndsAt);
   return pricePaise - Math.round((pricePaise * percent) / 10000) * 100;
