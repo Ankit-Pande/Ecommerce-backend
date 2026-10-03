@@ -6,7 +6,6 @@ import { paginate } from "../utils/paginate";
 import { finalPrice, LOW_STOCK_AT } from "../utils/price";
 import { titleCase } from "../utils/text";
 import { tokenService } from "./token.service";
-import { userService } from "./user.service";
 
 type ProductInput = {
   name: string;
@@ -303,13 +302,6 @@ export const adminService = {
     return brand;
   },
 
-  // Brand badlo.
-  async updateBrand(id: string, data: { name?: string; slug?: string; isActive?: boolean }, logo?: string) {
-    const brand = await prisma.brand.update({ where: { id }, data: { ...data, ...(logo && { logo }) } });
-    await bumpStorefrontCache();
-    return brand;
-  },
-
   // Brand delete (products ho to nahi).
   async deleteBrand(id: string) {
     const products = await prisma.product.count({ where: { brandId: id } });
@@ -339,17 +331,6 @@ export const adminService = {
     return banner;
   },
 
-  // Banner badlo.
-  async updateBanner(
-    id: string,
-    data: { link?: string | null; position?: number; isActive?: boolean },
-    image?: string,
-  ) {
-    const banner = await prisma.banner.update({ where: { id }, data: { ...data, ...(image && { image }) } });
-    await bumpStorefrontCache();
-    return banner;
-  },
-
   // Banner delete.
   async deleteBanner(id: string) {
     await prisma.banner.delete({ where: { id } });
@@ -357,6 +338,34 @@ export const adminService = {
   },
 
   // ---------- Orders ----------
+  // Dashboard ke chaar number. Sab indexed column par chhoti ginti hain (poori table nahi).
+  async getStats() {
+    // Din India ke time se shuru hota hai, server UTC par chale tab bhi.
+    const IST_OFFSET_MS = 330 * 60 * 1000;
+    const istNow = new Date(Date.now() + IST_OFFSET_MS);
+    istNow.setUTCHours(0, 0, 0, 0);
+    const startOfDay = new Date(istNow.getTime() - IST_OFFSET_MS);
+
+    const [today, awaitingPayment, toShip, needsReview] = await Promise.all([
+      prisma.order.aggregate({
+        where: { createdAt: { gte: startOfDay }, status: { in: ["CONFIRMED", "SHIPPED", "DELIVERED"] } },
+        _count: true,
+        _sum: { totalPaise: true },
+      }),
+      prisma.order.count({ where: { status: "PENDING" } }),
+      prisma.order.count({ where: { status: "CONFIRMED" } }),
+      prisma.order.count({ where: { needsReview: true } }),
+    ]);
+
+    return {
+      ordersToday: today._count,
+      revenueTodayPaise: today._sum.totalPaise ?? 0,
+      awaitingPayment,
+      toShip,
+      needsReview,
+    };
+  },
+
   // Saare orders (status / review filter ke saath).
   async listOrders(query: { status?: OrderStatus; needsReview?: boolean; cursor?: string; limit: number }) {
     const rows = await prisma.order.findMany({
@@ -382,27 +391,6 @@ export const adminService = {
     return paginate(rows, query.limit);
   },
 
-  // Ek order poori detail ke saath.
-  async getOrder(id: string) {
-    const order = await prisma.order.findUnique({
-      where: { id },
-      include: {
-        user: { select: { id: true, phone: true, name: true, email: true } },
-        items: {
-          select: {
-            productId: true,
-            productName: true,
-            productImage: true,
-            pricePaise: true,
-            quantity: true,
-          },
-        },
-      },
-    });
-    if (!order) throw new AppError("Order not found", 404);
-    return order;
-  },
-
   // ---------- Users ----------
   // Users list (phone se search).
   async listUsers(query: { q?: string; cursor?: string; limit: number }) {
@@ -424,27 +412,6 @@ export const adminService = {
     return paginate(rows, query.limit);
   },
 
-  // Ek user, address aur order ginti ke saath.
-  async getUser(id: string) {
-    const user = await prisma.user.findFirst({
-      where: { id, isDeleted: false },
-      select: {
-        id: true,
-        phone: true,
-        alternatePhone: true,
-        name: true,
-        email: true,
-        role: true,
-        isBlocked: true,
-        createdAt: true,
-        addresses: true,
-        _count: { select: { orders: true } },
-      },
-    });
-    if (!user) throw new AppError("User not found", 404);
-    return user;
-  },
-
   // User block/unblock (block par saare device se logout).
   async setUserBlock(actor: Actor, userId: string, isBlocked: boolean) {
     await checkCanManage(actor, userId);
@@ -457,11 +424,5 @@ export const adminService = {
     await checkCanManage(actor, userId);
     await prisma.user.update({ where: { id: userId }, data: { role } });
     await tokenService.revokeAllSessions(userId);
-  },
-
-  // Admin kisi user ka account delete kare.
-  async deleteUser(actor: Actor, userId: string) {
-    await checkCanManage(actor, userId);
-    await userService.deleteAccount(userId);
   },
 };

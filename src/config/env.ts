@@ -45,7 +45,6 @@ const schema = z
     RAZORPAY_KEY_ID: neededInProd,
     RAZORPAY_KEY_SECRET: neededInProd,
     RAZORPAY_WEBHOOK_SECRET: neededInProd,
-    CHECKOUT_URL: isProd ? z.string().url() : z.string().url().default("http://localhost:3000/checkout"),
     PAYMENT_WINDOW_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
     MAX_PENDING_ORDERS: z.coerce.number().int().min(1).max(10).default(2),
   })

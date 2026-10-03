@@ -98,19 +98,8 @@ export const createBrandSchema = z.object({
   body: z.object({ name: z.string().trim().min(2).max(80), slug }).strict(),
 });
 
-export const updateBrandSchema = z.object({
-  params: idParams,
-  body: z
-    .object({
-      name: z.string().trim().min(2).max(80).optional(),
-      slug: slug.optional(),
-      isActive: formBoolean.optional(),
-    })
-    .strict(),
-});
-
 // ---------- Banner ----------
-// Site ka apna path ("/catalog?..") ya poora http(s) URL.
+// Site ka apna path ("/products?..") ya poora http(s) URL.
 const bannerLink = z
   .string()
   .refine(
@@ -123,17 +112,6 @@ export const createBannerSchema = z.object({
     .object({
       link: bannerLink.optional(),
       position: z.coerce.number().int().min(0).default(0),
-    })
-    .strict(),
-});
-
-export const updateBannerSchema = z.object({
-  params: idParams,
-  body: z
-    .object({
-      link: bannerLink.nullable().optional(),
-      position: z.coerce.number().int().min(0).optional(),
-      isActive: formBoolean.optional(),
     })
     .strict(),
 });

@@ -55,7 +55,6 @@ model User {
   cart      Cart?
   orders    Order[]
   reviews   Review[]
-  views     ProductView[]
 }
 
 // Ek row = ek device ka login. Refresh token ka jti yahin rehta hai (source of truth);
@@ -146,11 +145,11 @@ model Product {
   sellPaise       Int
   offerEndsAt     DateTime?
 
-  stock      Int      @default(0)
-  color      String?
-  gender     String?
-  ageGroup   String?
-  images     String[]
+  stock    Int      @default(0)
+  color    String?
+  gender   String?
+  ageGroup String?
+  images   String[]
 
   categoryId String
   category   Category @relation(fields: [categoryId], references: [id])
@@ -172,7 +171,6 @@ model Product {
   cartItems  CartItem[]
   orderItems OrderItem[]
   reviews    Review[]
-  views      ProductView[]
 
   @@index([categoryId, isActive])
   @@index([brandId, isActive])
@@ -258,6 +256,7 @@ model Order {
   // Admin list bina filter ke isi par sort hoti hai.
   @@index([createdAt])
   @@index([status, paymentExpiresAt])
+  @@index([needsReview, createdAt])
 }
 
 model OrderItem {
@@ -311,15 +310,4 @@ model Banner {
   updatedAt DateTime @updatedAt
 
   @@index([isActive, position])
-}
-
-model ProductView {
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  viewedAt  DateTime @updatedAt
-
-  @@id([userId, productId])
-  @@index([userId, viewedAt])
 }

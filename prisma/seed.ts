@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { randomUUID } from "crypto";
 import { PrismaClient } from "@prisma/client";
+import { finalPrice } from "../src/utils/price";
 
 // Seed pehle poora DB saaf karta hai — live DB par galti se chala to saara asli data ud jaata.
 if (process.env.NODE_ENV !== "development") {
@@ -39,6 +40,7 @@ const chance = (percent: number) => random() * 100 < percent;
 const slugify = (text: string) =>
   text
     .toLowerCase()
+    .replace(/'/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
@@ -49,6 +51,8 @@ const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 10
 // Catalog ka dhancha
 // ---------------------------------------------------------------------------
 // price rupee me hai — neeche paise me badal dete hain.
+// gender/ageGroup catalog filter ke liye: bacchon ke kapde me boys = Men, girls = Women + Kids.
+// colors: [] matlab is cheez ka rang nahi hota (kitaab, masala) — tab color null.
 type Child = {
   name: string;
   item: string; // product ke naam me jo shabd aayega
@@ -57,267 +61,165 @@ type Child = {
   about: string;
   gender?: "Men" | "Women" | "Unisex";
   ageGroup?: "Adult" | "Kids";
+  colors?: readonly string[];
 };
 
 const CATALOG: { name: string; children: Child[] }[] = [
   {
-    name: "Electronics",
+    name: "Mobiles & Tablets",
     children: [
-      {
-        name: "Mobiles",
-        item: "Smartphone",
-        price: [7999, 79999],
-        variants: ["64GB", "128GB", "256GB", "512GB"],
-        about: "A everyday smartphone with a bright display, all-day battery and a clean camera setup.",
-      },
-      {
-        name: "Laptops",
-        item: "Laptop",
-        price: [28999, 129999],
-        variants: ["8GB RAM", "16GB RAM", "32GB RAM"],
-        about: "A thin and light laptop built for work, study and long hours away from a charger.",
-      },
-      {
-        name: "Headphones",
-        item: "Headphones",
-        price: [699, 24999],
-        variants: ["Wireless", "Wired", "Noise Cancelling"],
-        about: "Comfortable over-ear sound with deep bass and a microphone that people can actually hear.",
-      },
-      {
-        name: "Smart Watches",
-        item: "Smart Watch",
-        price: [1299, 34999],
-        variants: ["41mm", "45mm", "GPS", "LTE"],
-        about: "Tracks steps, sleep and heart rate, and keeps notifications on your wrist instead of your pocket.",
-      },
-      {
-        name: "Televisions",
-        item: "LED TV",
-        price: [12999, 149999],
-        variants: ["32 inch", "43 inch", "55 inch", "65 inch"],
-        about: "A smart TV with sharp contrast and built-in apps, ready to use straight out of the box.",
-      },
+      { name: "Smartphones", item: "Smartphone", price: [7999, 89999], variants: ["64GB", "128GB", "256GB", "512GB"], about: "A smartphone with a bright AMOLED display, all-day battery and a dependable dual camera.", colors: ["Black", "White", "Sky Blue", "Olive Green"] },
+      { name: "Tablets", item: "Tablet", price: [9999, 64999], variants: ["Wi-Fi 64GB", "Wi-Fi 128GB", "LTE 128GB"], about: "A light tablet for online classes, movies and note taking, with a long-lasting battery.", colors: ["Grey", "Silver", "Sky Blue"] },
+      { name: "Feature Phones", item: "Feature Phone", price: [899, 3499], variants: ["Dual SIM", "Single SIM"], about: "A simple keypad phone with a loud speaker, torch and a battery that runs for days.", colors: ["Black", "Red", "Grey"] },
+      { name: "Power Banks", item: "Power Bank", price: [599, 4999], variants: ["10000mAh", "20000mAh", "30000mAh"], about: "Fast-charging power bank with two outputs, safe enough to carry on a flight.", colors: ["Black", "White"] },
+      { name: "Mobile Covers", item: "Mobile Cover", price: [149, 1499], variants: ["Silicone", "Hard Case", "Flip Cover"], about: "Shock-absorbing cover with raised edges that protect the screen and camera." },
     ],
   },
   {
-    name: "Fashion",
+    name: "Laptops & Computers",
     children: [
-      {
-        name: "T-Shirts",
-        item: "T-Shirt",
-        price: [349, 2499],
-        variants: ["Regular Fit", "Slim Fit", "Oversized"],
-        about: "Soft combed cotton that keeps its shape and colour even after a full season of washing.",
-        gender: "Unisex",
-        ageGroup: "Adult",
-      },
-      {
-        name: "Shirts",
-        item: "Shirt",
-        price: [699, 4999],
-        variants: ["Full Sleeve", "Half Sleeve", "Linen"],
-        about: "A crisp everyday shirt that works for the office on weekdays and dinner on weekends.",
-        gender: "Men",
-        ageGroup: "Adult",
-      },
-      {
-        name: "Jeans",
-        item: "Jeans",
-        price: [899, 5999],
-        variants: ["Slim Fit", "Straight Fit", "Relaxed Fit"],
-        about: "Stretchable denim that holds its shape through long days of sitting, walking and travelling.",
-        gender: "Men",
-        ageGroup: "Adult",
-      },
-      {
-        name: "Kurtas",
-        item: "Kurta",
-        price: [599, 6999],
-        variants: ["Cotton", "Silk Blend", "Rayon"],
-        about: "A breathable festive kurta with clean stitching and a fit that stays comfortable all day.",
-        gender: "Women",
-        ageGroup: "Adult",
-      },
-      {
-        name: "Sarees",
-        item: "Saree",
-        price: [999, 24999],
-        variants: ["Banarasi", "Georgette", "Cotton Silk"],
-        about: "A wedding-ready saree with a woven border and a matching unstitched blouse piece.",
-        gender: "Women",
-        ageGroup: "Adult",
-      },
-      {
-        name: "Dresses",
-        item: "Dress",
-        price: [799, 7999],
-        variants: ["Midi", "Maxi", "A-Line"],
-        about: "A party dress with a flattering drape that needs no ironing after it comes out of the bag.",
-        gender: "Women",
-        ageGroup: "Adult",
-      },
+      { name: "Laptops", item: "Laptop", price: [28999, 159999], variants: ["8GB RAM 512GB SSD", "16GB RAM 512GB SSD", "16GB RAM 1TB SSD"], about: "A thin and light laptop built for work, study and long hours away from a charger.", colors: ["Silver", "Grey", "Black"] },
+      { name: "Gaming Laptops", item: "Gaming Laptop", price: [59999, 219999], variants: ["RTX 4050", "RTX 4060", "RTX 4070"], about: "High refresh rate display and a dedicated graphics card for games and video editing.", colors: ["Black", "Grey"] },
+      { name: "Monitors", item: "Monitor", price: [6999, 49999], variants: ["22 inch FHD", "24 inch IPS", "27 inch QHD"], about: "An eye-care monitor with thin bezels, ideal for a work-from-home desk.", colors: ["Black", "White"] },
+      { name: "Keyboards & Mouse", item: "Keyboard Mouse Combo", price: [499, 7999], variants: ["Wired", "Wireless", "Mechanical"], about: "Comfortable typing with quiet keys and a mouse that tracks smoothly on any desk.", colors: ["Black", "White", "Grey"] },
+      { name: "Printers", item: "Printer", price: [3999, 29999], variants: ["Ink Tank", "Laser", "All-in-One"], about: "Prints, scans and copies with low running cost for home and small office.", colors: ["Black", "White"] },
+    ],
+  },
+  {
+    name: "Electronics",
+    children: [
+      { name: "Headphones", item: "Headphones", price: [699, 24999], variants: ["Wireless", "Wired", "Noise Cancelling"], about: "Comfortable over-ear sound with deep bass and a microphone that people can actually hear." },
+      { name: "Earbuds", item: "Earbuds", price: [799, 19999], variants: ["ANC", "ENC", "Gaming"], about: "True wireless earbuds with a pocket-size case and quick charge for the daily commute." },
+      { name: "Speakers", item: "Bluetooth Speaker", price: [799, 24999], variants: ["10W", "20W", "40W"], about: "Portable speaker with punchy bass, water resistance and a full day of playback." },
+      { name: "Smart Watches", item: "Smart Watch", price: [1299, 34999], variants: ["41mm", "45mm", "GPS", "LTE"], about: "Tracks steps, sleep and heart rate, and keeps notifications on your wrist instead of your pocket." },
+      { name: "Televisions", item: "LED TV", price: [12999, 149999], variants: ["32 inch", "43 inch", "55 inch", "65 inch"], about: "A smart TV with sharp contrast and built-in apps, ready to use straight out of the box.", colors: ["Black"] },
+      { name: "Cameras", item: "Camera", price: [9999, 159999], variants: ["Body Only", "With 18-55mm Lens", "Vlogging Kit"], about: "Mirrorless camera with fast autofocus and clean 4K video for creators.", colors: ["Black", "Silver"] },
+    ],
+  },
+  {
+    name: "Men's Fashion",
+    children: [
+      { name: "Men's T-Shirts", item: "T-Shirt", price: [349, 2499], variants: ["S", "M", "L", "XL", "XXL"], about: "Soft combed cotton that keeps its shape and colour after a full season of washing.", gender: "Men", ageGroup: "Adult" },
+      { name: "Men's Shirts", item: "Shirt", price: [699, 4999], variants: ["S", "M", "L", "XL"], about: "A crisp everyday shirt for the office on weekdays and dinner on weekends.", gender: "Men", ageGroup: "Adult" },
+      { name: "Men's Jeans", item: "Jeans", price: [899, 5999], variants: ["30", "32", "34", "36"], about: "Stretchable denim that holds its shape through long days of sitting, walking and travelling.", gender: "Men", ageGroup: "Adult" },
+      { name: "Men's Trousers", item: "Trousers", price: [799, 4999], variants: ["30", "32", "34", "36"], about: "Wrinkle-resistant formal trousers with a comfortable waistband.", gender: "Men", ageGroup: "Adult" },
+      { name: "Men's Jackets", item: "Jacket", price: [1299, 9999], variants: ["M", "L", "XL"], about: "A light jacket that blocks the wind and folds into a backpack.", gender: "Men", ageGroup: "Adult" },
+      { name: "Men's Kurtas", item: "Men's Kurta", price: [599, 5999], variants: ["M", "L", "XL", "XXL"], about: "Festive cotton kurta with neat stitching for pujas, weddings and Eid.", gender: "Men", ageGroup: "Adult" },
+      { name: "Men's Track Pants", item: "Track Pants", price: [499, 2999], variants: ["M", "L", "XL"], about: "Quick-dry track pants with zip pockets for the gym and morning walks.", gender: "Men", ageGroup: "Adult" },
+    ],
+  },
+  {
+    name: "Women's Fashion",
+    children: [
+      { name: "Women's Kurtas", item: "Kurta", price: [599, 6999], variants: ["S", "M", "L", "XL"], about: "A breathable kurta with clean stitching and a fit that stays comfortable all day.", gender: "Women", ageGroup: "Adult" },
+      { name: "Sarees", item: "Saree", price: [999, 24999], variants: ["Banarasi", "Georgette", "Cotton Silk"], about: "A wedding-ready saree with a woven border and a matching unstitched blouse piece.", gender: "Women", ageGroup: "Adult" },
+      { name: "Dresses", item: "Dress", price: [799, 7999], variants: ["S", "M", "L", "XL"], about: "A party dress with a flattering drape that needs no ironing after it comes out of the bag.", gender: "Women", ageGroup: "Adult" },
+      { name: "Women's Tops", item: "Top", price: [399, 2999], variants: ["S", "M", "L", "XL"], about: "Easy everyday top that pairs with jeans, skirts and palazzos.", gender: "Women", ageGroup: "Adult" },
+      { name: "Women's Jeans", item: "Women's Jeans", price: [899, 4999], variants: ["26", "28", "30", "32"], about: "High-rise stretch jeans that stay comfortable from morning to evening.", gender: "Women", ageGroup: "Adult" },
+      { name: "Lehengas", item: "Lehenga", price: [2999, 39999], variants: ["Semi-Stitched", "Stitched"], about: "Embroidered lehenga with a matching dupatta, made for weddings and sangeet nights.", gender: "Women", ageGroup: "Adult" },
+      { name: "Leggings", item: "Leggings", price: [249, 1499], variants: ["S", "M", "L", "XL"], about: "Four-way stretch leggings that do not fade or lose shape.", gender: "Women", ageGroup: "Adult" },
+    ],
+  },
+  {
+    name: "Kids & Baby",
+    children: [
+      { name: "Boys Clothing", item: "Boys T-Shirt", price: [249, 1999], variants: ["2-3 Years", "4-5 Years", "6-7 Years", "8-9 Years"], about: "Skin-friendly cotton with prints that survive playground afternoons and the washing machine.", gender: "Men", ageGroup: "Kids" },
+      { name: "Girls Clothing", item: "Girls Frock", price: [299, 2999], variants: ["2-3 Years", "4-5 Years", "6-7 Years", "8-9 Years"], about: "Twirl-friendly frock in soft fabric with a comfortable inner lining.", gender: "Women", ageGroup: "Kids" },
+      { name: "Baby Care", item: "Baby Care Kit", price: [199, 2999], variants: ["0-6 Months", "6-12 Months", "1-2 Years"], about: "Gentle, dermatologically tested care for a baby's delicate skin.", gender: "Unisex", ageGroup: "Kids", colors: [] },
+      { name: "School Bags", item: "School Bag", price: [399, 2999], variants: ["Small", "Medium", "Large"], about: "Padded straps and three compartments to carry books, tiffin and a water bottle.", gender: "Unisex", ageGroup: "Kids" },
+      { name: "Kids Footwear", item: "Kids Shoes", price: [349, 2999], variants: ["UK 10", "UK 11", "UK 12", "UK 1"], about: "Velcro shoes kids can wear on their own, with a sole that grips on school corridors.", gender: "Unisex", ageGroup: "Kids" },
+    ],
+  },
+  {
+    name: "Toys & Games",
+    children: [
+      { name: "Building Blocks", item: "Building Blocks", price: [199, 4999], variants: ["50 Pieces", "100 Pieces", "200 Pieces"], about: "Smooth-edged blocks that keep small hands busy and build creativity.", gender: "Unisex", ageGroup: "Kids" },
+      { name: "Soft Toys", item: "Soft Toy", price: [199, 2999], variants: ["Small", "Medium", "Large"], about: "Huggable plush toy with child-safe stitching and fill.", gender: "Unisex", ageGroup: "Kids" },
+      { name: "Remote Control Toys", item: "RC Car", price: [499, 6999], variants: ["1:24 Scale", "1:18 Scale", "Off-Road"], about: "Rechargeable remote control car with fast speed and sturdy tyres.", gender: "Unisex", ageGroup: "Kids" },
+      { name: "Board Games", item: "Board Game", price: [299, 3499], variants: ["2-4 Players", "2-6 Players", "Family Pack"], about: "A family board game that brings everyone to the table for game night.", gender: "Unisex", colors: [] },
+      { name: "Puzzles", item: "Jigsaw Puzzle", price: [199, 1999], variants: ["100 Pieces", "500 Pieces", "1000 Pieces"], about: "Thick, snug-fitting puzzle pieces with a bright printed picture.", gender: "Unisex", colors: [] },
+      { name: "Dolls", item: "Doll", price: [299, 3999], variants: ["Classic", "Fashion Set", "With House"], about: "A doll set with outfits and accessories for hours of pretend play.", gender: "Women", ageGroup: "Kids" },
     ],
   },
   {
     name: "Footwear",
     children: [
-      {
-        name: "Sports Shoes",
-        item: "Running Shoes",
-        price: [999, 12999],
-        variants: ["UK 6", "UK 7", "UK 8", "UK 9", "UK 10"],
-        about: "Cushioned running shoes with a breathable mesh upper and a grip that holds on wet roads.",
-        gender: "Unisex",
-        ageGroup: "Adult",
-      },
-      {
-        name: "Formal Shoes",
-        item: "Formal Shoes",
-        price: [1299, 9999],
-        variants: ["UK 6", "UK 7", "UK 8", "UK 9"],
-        about: "Genuine leather formals with a soft footbed, made for long days on your feet.",
-        gender: "Men",
-        ageGroup: "Adult",
-      },
-      {
-        name: "Sandals",
-        item: "Sandals",
-        price: [399, 3499],
-        variants: ["UK 6", "UK 7", "UK 8", "UK 9"],
-        about: "Lightweight everyday sandals with a non-slip sole and straps that do not cut into your feet.",
-        gender: "Unisex",
-        ageGroup: "Adult",
-      },
-      {
-        name: "Sneakers",
-        item: "Sneakers",
-        price: [899, 8999],
-        variants: ["UK 6", "UK 7", "UK 8", "UK 9", "UK 10"],
-        about: "Everyday sneakers that go with jeans, shorts and the walk to the metro station.",
-        gender: "Unisex",
-        ageGroup: "Adult",
-      },
+      { name: "Men's Sports Shoes", item: "Running Shoes", price: [999, 12999], variants: ["UK 6", "UK 7", "UK 8", "UK 9", "UK 10"], about: "Cushioned running shoes with a breathable mesh upper and grip that holds on wet roads.", gender: "Men", ageGroup: "Adult" },
+      { name: "Women's Sports Shoes", item: "Women's Running Shoes", price: [999, 10999], variants: ["UK 3", "UK 4", "UK 5", "UK 6", "UK 7"], about: "Lightweight trainers with a soft heel for walks, gym and yoga class.", gender: "Women", ageGroup: "Adult" },
+      { name: "Formal Shoes", item: "Formal Shoes", price: [1299, 9999], variants: ["UK 6", "UK 7", "UK 8", "UK 9"], about: "Genuine leather formals with a soft footbed, made for long days on your feet.", gender: "Men", ageGroup: "Adult" },
+      { name: "Women's Heels", item: "Heels", price: [699, 5999], variants: ["UK 3", "UK 4", "UK 5", "UK 6"], about: "Block heels with a padded insole that stay comfortable through a whole function.", gender: "Women", ageGroup: "Adult" },
+      { name: "Sandals", item: "Sandals", price: [399, 3499], variants: ["UK 6", "UK 7", "UK 8", "UK 9"], about: "Lightweight everyday sandals with a non-slip sole and soft straps.", gender: "Unisex", ageGroup: "Adult" },
+      { name: "Sneakers", item: "Sneakers", price: [899, 8999], variants: ["UK 6", "UK 7", "UK 8", "UK 9", "UK 10"], about: "Everyday sneakers that go with jeans, shorts and the walk to the metro station.", gender: "Unisex", ageGroup: "Adult" },
+    ],
+  },
+  {
+    name: "Bags & Accessories",
+    children: [
+      { name: "Backpacks", item: "Backpack", price: [499, 4999], variants: ["20L", "30L", "40L"], about: "Water-resistant backpack with a padded laptop sleeve and bottle pockets.", gender: "Unisex", ageGroup: "Adult" },
+      { name: "Handbags", item: "Handbag", price: [599, 7999], variants: ["Tote", "Sling", "Clutch"], about: "Vegan leather handbag with roomy compartments and a sturdy zip.", gender: "Women", ageGroup: "Adult" },
+      { name: "Wallets", item: "Wallet", price: [299, 2999], variants: ["Bi-Fold", "Tri-Fold", "Card Holder"], about: "Slim wallet with RFID protection and space for cards and cash.", gender: "Men", ageGroup: "Adult" },
+      { name: "Watches", item: "Analog Watch", price: [699, 14999], variants: ["Leather Strap", "Metal Strap", "Silicone Strap"], about: "Classic analog watch with a scratch-resistant glass and water resistance.", gender: "Unisex", ageGroup: "Adult" },
+      { name: "Sunglasses", item: "Sunglasses", price: [399, 5999], variants: ["Aviator", "Wayfarer", "Round"], about: "UV400 protected sunglasses with lightweight frames.", gender: "Unisex", ageGroup: "Adult" },
     ],
   },
   {
     name: "Home & Kitchen",
     children: [
-      {
-        name: "Cookware",
-        item: "Cookware Set",
-        price: [499, 12999],
-        variants: ["2 Piece", "3 Piece", "5 Piece"],
-        about: "Even-heating base that works on gas and induction, with handles that stay cool to hold.",
-      },
-      {
-        name: "Storage",
-        item: "Storage Box",
-        price: [199, 3999],
-        variants: ["Small", "Medium", "Large"],
-        about: "Stackable airtight containers that keep the kitchen shelf tidy and the snacks fresh.",
-      },
-      {
-        name: "Bedsheets",
-        item: "Bedsheet",
-        price: [399, 4999],
-        variants: ["Single", "Double", "King"],
-        about: "Soft cotton bedsheet with two pillow covers, pre-shrunk so the fit stays right.",
-      },
-      {
-        name: "Lighting",
-        item: "LED Lamp",
-        price: [249, 5999],
-        variants: ["Warm White", "Cool White", "Smart"],
-        about: "Flicker-free light that is easy on the eyes during late-night study or work.",
-      },
+      { name: "Cookware", item: "Cookware Set", price: [499, 12999], variants: ["2 Piece", "3 Piece", "5 Piece"], about: "Even-heating base that works on gas and induction, with handles that stay cool." },
+      { name: "Storage", item: "Storage Box", price: [199, 3999], variants: ["Small", "Medium", "Large"], about: "Stackable airtight containers that keep the kitchen shelf tidy and snacks fresh." },
+      { name: "Bedsheets", item: "Bedsheet", price: [399, 4999], variants: ["Single", "Double", "King"], about: "Soft cotton bedsheet with two pillow covers, pre-shrunk so the fit stays right." },
+      { name: "Lighting", item: "LED Lamp", price: [249, 5999], variants: ["Warm White", "Cool White", "Smart"], about: "Flicker-free light that is easy on the eyes during late-night study or work." },
+      { name: "Home Decor", item: "Wall Decor", price: [299, 6999], variants: ["Small", "Medium", "Large"], about: "Handcrafted decor piece that brings warmth to living rooms and bedrooms." },
+      { name: "Furniture", item: "Study Table", price: [2999, 24999], variants: ["Compact", "Standard", "With Storage"], about: "Engineered wood furniture that is easy to assemble and built to last." },
     ],
   },
   {
-    name: "Beauty",
+    name: "Appliances",
     children: [
-      {
-        name: "Skincare",
-        item: "Face Cream",
-        price: [199, 3499],
-        variants: ["50ml", "100ml", "200ml"],
-        about: "Lightweight daily moisturiser that absorbs fast and does not leave a greasy film.",
-      },
-      {
-        name: "Haircare",
-        item: "Hair Oil",
-        price: [149, 2499],
-        variants: ["100ml", "200ml", "400ml"],
-        about: "Nourishing blend for dry scalp and frizz, with a light scent that fades quickly.",
-      },
-      {
-        name: "Fragrances",
-        item: "Perfume",
-        price: [399, 8999],
-        variants: ["50ml", "100ml"],
-        about: "Long-lasting fragrance with a fresh opening that settles into a warm base.",
-      },
+      { name: "Mixer Grinders", item: "Mixer Grinder", price: [1499, 8999], variants: ["500W", "750W", "1000W"], about: "Powerful motor with stainless steel jars for chutneys, masalas and batter.", colors: ["White", "Black", "Red"] },
+      { name: "Refrigerators", item: "Refrigerator", price: [12999, 89999], variants: ["190L Single Door", "260L Double Door", "340L Frost Free"], about: "Energy-efficient refrigerator that keeps vegetables fresh for longer.", colors: ["Grey", "Silver", "Maroon"] },
+      { name: "Washing Machines", item: "Washing Machine", price: [9999, 54999], variants: ["6kg Semi-Auto", "7kg Top Load", "8kg Front Load"], about: "Gentle wash programs that clean well while saving water and power.", colors: ["White", "Grey"] },
+      { name: "Air Conditioners", item: "Split AC", price: [24999, 69999], variants: ["1 Ton", "1.5 Ton", "2 Ton"], about: "Inverter AC that cools fast and keeps electricity bills in control.", colors: ["White"] },
+      { name: "Microwaves", item: "Microwave Oven", price: [4999, 24999], variants: ["20L Solo", "25L Grill", "28L Convection"], about: "Reheat, grill and bake with auto-cook menus for Indian dishes.", colors: ["Black", "Silver"] },
+      { name: "Fans", item: "Ceiling Fan", price: [1199, 6999], variants: ["900mm", "1200mm", "BLDC 1200mm"], about: "High-speed fan with a powerful motor and dust-resistant finish.", colors: ["White", "Brown", "Grey"] },
     ],
   },
   {
-    name: "Sports",
+    name: "Beauty & Personal Care",
     children: [
-      {
-        name: "Fitness",
-        item: "Dumbbell Set",
-        price: [499, 14999],
-        variants: ["5kg", "10kg", "20kg"],
-        about: "Rubber-coated weights that protect the floor and stay quiet in a flat.",
-        gender: "Unisex",
-        ageGroup: "Adult",
-      },
-      {
-        name: "Cricket",
-        item: "Cricket Bat",
-        price: [799, 19999],
-        variants: ["Size 5", "Size 6", "Full Size"],
-        about: "Kashmir willow bat with a thick edge and a grip that survives a full season.",
-        gender: "Unisex",
-      },
-      {
-        name: "Cycling",
-        item: "Cycle",
-        price: [4999, 49999],
-        variants: ["26 inch", "27.5 inch", "29 inch"],
-        about: "Steel frame cycle with dual disc brakes, built for city roads and weekend trails.",
-        gender: "Unisex",
-      },
+      { name: "Skincare", item: "Face Cream", price: [199, 3499], variants: ["50ml", "100ml", "200ml"], about: "Lightweight daily moisturiser that absorbs fast and does not leave a greasy film.", colors: [] },
+      { name: "Haircare", item: "Hair Oil", price: [149, 2499], variants: ["100ml", "200ml", "400ml"], about: "Nourishing blend for dry scalp and frizz, with a light scent that fades quickly.", colors: [] },
+      { name: "Fragrances", item: "Perfume", price: [399, 8999], variants: ["50ml", "100ml"], about: "Long-lasting fragrance with a fresh opening that settles into a warm base.", colors: [] },
+      { name: "Makeup", item: "Lipstick", price: [199, 2499], variants: ["Matte", "Satin", "Liquid"], about: "Rich colour in one swipe that stays put through meals.", gender: "Women", ageGroup: "Adult", colors: ["Red", "Maroon", "Pink", "Brown"] },
+      { name: "Men's Grooming", item: "Trimmer", price: [699, 4999], variants: ["Corded", "Cordless", "Multi-Grooming Kit"], about: "Skin-friendly blades and long battery life for a clean trim at home.", gender: "Men", ageGroup: "Adult", colors: ["Black", "Grey"] },
     ],
   },
   {
-    name: "Kids",
+    name: "Sports & Fitness",
     children: [
-      {
-        name: "Kids Clothing",
-        item: "Kids T-Shirt",
-        price: [249, 1999],
-        variants: ["2-3 Years", "4-5 Years", "6-7 Years", "8-9 Years"],
-        about: "Skin-friendly cotton with prints that survive playground afternoons and the washing machine.",
-        gender: "Unisex",
-        ageGroup: "Kids",
-      },
-      {
-        name: "Toys",
-        item: "Building Blocks",
-        price: [199, 4999],
-        variants: ["50 Pieces", "100 Pieces", "200 Pieces"],
-        about: "Smooth-edged blocks that keep small hands busy and do not hurt when stepped on.",
-        ageGroup: "Kids",
-      },
-      {
-        name: "Kids Footwear",
-        item: "Kids Shoes",
-        price: [349, 2999],
-        variants: ["UK 10", "UK 11", "UK 12", "UK 1"],
-        about: "Velcro shoes kids can wear on their own, with a sole that grips on school corridors.",
-        gender: "Unisex",
-        ageGroup: "Kids",
-      },
+      { name: "Fitness", item: "Dumbbell Set", price: [499, 14999], variants: ["5kg", "10kg", "20kg"], about: "Rubber-coated weights that protect the floor and stay quiet in a flat.", gender: "Unisex", ageGroup: "Adult" },
+      { name: "Cricket", item: "Cricket Bat", price: [799, 19999], variants: ["Size 5", "Size 6", "Full Size"], about: "Kashmir willow bat with a thick edge and a grip that survives a full season.", gender: "Unisex" },
+      { name: "Cycling", item: "Cycle", price: [4999, 49999], variants: ["26 inch", "27.5 inch", "29 inch"], about: "Steel frame cycle with dual disc brakes, built for city roads and weekend trails.", gender: "Unisex" },
+      { name: "Yoga", item: "Yoga Mat", price: [299, 2999], variants: ["4mm", "6mm", "8mm"], about: "Anti-slip yoga mat with a cushioned surface for knees and back.", gender: "Unisex", ageGroup: "Adult" },
+      { name: "Badminton", item: "Badminton Racket", price: [399, 7999], variants: ["Single", "Pair", "With Shuttles"], about: "Lightweight racket with a strong frame and comfortable grip.", gender: "Unisex" },
+    ],
+  },
+  {
+    name: "Books",
+    children: [
+      { name: "Fiction", item: "Novel", price: [149, 999], variants: ["Paperback", "Hardcover"], about: "A gripping story that is hard to put down once you start the first chapter.", colors: [] },
+      { name: "Self Help", item: "Self Help Book", price: [149, 899], variants: ["Paperback", "Hardcover"], about: "Practical ideas to build better habits, focus and money sense.", colors: [] },
+      { name: "Exam Preparation", item: "Exam Guide", price: [199, 1499], variants: ["Paperback", "Latest Edition"], about: "Chapter-wise practice and solved papers for competitive exams.", colors: [] },
+      { name: "Children's Books", item: "Story Book", price: [99, 799], variants: ["Paperback", "Board Book"], about: "Colourful picture stories that make reading time fun for kids.", gender: "Unisex", ageGroup: "Kids", colors: [] },
+    ],
+  },
+  {
+    name: "Grocery & Gourmet",
+    children: [
+      { name: "Dry Fruits", item: "Dry Fruits", price: [249, 2999], variants: ["250g", "500g", "1kg"], about: "Handpicked premium dry fruits, packed fresh in a resealable pouch.", colors: [] },
+      { name: "Tea & Coffee", item: "Tea", price: [149, 1499], variants: ["250g", "500g", "1kg"], about: "Strong and aromatic blend for the perfect morning cup.", colors: [] },
+      { name: "Snacks", item: "Snack Pack", price: [49, 599], variants: ["Single", "Pack of 3", "Family Pack"], about: "Crunchy, tasty snacks for tea time and travel.", colors: [] },
+      { name: "Spices", item: "Masala", price: [49, 699], variants: ["100g", "200g", "500g"], about: "Pure ground spices that bring home-style flavour to every dish.", colors: [] },
     ],
   },
 ];
@@ -327,13 +229,14 @@ const BRANDS = [
   "Voltro", "Nexora", "Urbanite", "Kestrel", "Maruvi", "Zentra", "Auralis", "Nordfell",
   "Trikon", "Bluewick", "Sahara Mills", "Ironpeak", "Lumora", "Cascade", "Vireo",
   "Rasika", "Tanvi", "Orbell", "Stonefield", "Glimr", "Panther Lab", "Kavach",
-  "Moonbay", "Everloom", "Silverline",
+  "Moonbay", "Everloom", "Silverline", "Desi Roots", "Pixelon", "Kaveri Craft",
+  "Monsoon Tales", "Swadesh Foods", "Lotus Living", "Rangrez", "Chhota Bheem Toys",
 ] as const;
 
 // DB me colour Title Case me rehta hai — catalog ka filter isi par chalta hai.
 const COLORS = [
   "Black", "White", "Navy Blue", "Red", "Grey", "Beige", "Olive Green",
-  "Maroon", "Mustard", "Sky Blue", "Pink", "Brown",
+  "Maroon", "Mustard", "Sky Blue", "Pink", "Brown", "Silver", "Purple", "Yellow",
 ] as const;
 
 const MODELS = [
@@ -378,9 +281,9 @@ const REVIEW_LINES = [
   "Delivery was late but the product itself is fine.",
 ] as const;
 
-const TOTAL_PRODUCTS = 1500;
-const TOTAL_USERS = 60;
-const TOTAL_ORDERS = 900;
+const TOTAL_PRODUCTS = 8000;
+const TOTAL_USERS = 300;
+const TOTAL_ORDERS = 4000;
 const BATCH = 1000;
 // Wahi number jo .env me hai — login par auth.service bhi isi ko super admin banati hai.
 const SUPER_ADMIN_PHONE = process.env.SUPER_ADMIN_PHONE ?? "9876543210";
@@ -391,7 +294,6 @@ const SUPER_ADMIN_PHONE = process.env.SUPER_ADMIN_PHONE ?? "9876543210";
 // ---------------------------------------------------------------------------
 async function clearAll() {
   await prisma.review.deleteMany();
-  await prisma.productView.deleteMany();
   await prisma.orderItem.deleteMany();
   await prisma.order.deleteMany();
   await prisma.cartItem.deleteMany();
@@ -475,7 +377,8 @@ async function main() {
       const brand = pick(brandRows);
       const model = pick(MODELS);
       const variant = pick(child.variants);
-      const color = pick(COLORS);
+      const colorChoices = child.colors ?? COLORS;
+      const color = colorChoices.length > 0 ? pick(colorChoices) : null;
       const series = between(2, 9);
 
       const name = `${brand.name} ${model} ${series} ${child.item} ${variant}`;
@@ -491,7 +394,7 @@ async function main() {
       // 45% products par discount. Unme se kuch par deadline bhi.
       const discountPercent = chance(45) ? between(5, 60) : 0;
       const offerEndsAt = discountPercent > 0 && chance(35) ? daysFromNow(between(2, 45)) : null;
-      const sellPaise = pricePaise - Math.round((pricePaise * discountPercent) / 100);
+      const sellPaise = finalPrice(pricePaise, discountPercent);
 
       // Teeno stock status dikhen: out of stock, kam bacha, aur normal.
       const stock = chance(6) ? 0 : chance(12) ? between(1, 5) : between(10, 250);
@@ -500,7 +403,14 @@ async function main() {
         id: randomUUID(),
         name,
         slug,
-        description: `${child.about} This ${child.item.toLowerCase()} comes in ${color.toLowerCase()} with the ${variant} option, packed and shipped by ${brand.name}.`,
+        description: [
+          child.about,
+          `Variant: ${variant}.`,
+          color ? `Colour: ${color}.` : "",
+          `Brand: ${brand.name}. Ships in 2-5 days with easy returns on damaged items.`,
+        ]
+          .filter(Boolean)
+          .join(" "),
         pricePaise,
         discountPercent,
         sellPaise,
@@ -704,12 +614,12 @@ async function main() {
 
   // ---------------- Banner ----------------
   const banners = [
-    { text: "Festive Sale", link: "/catalog?discount=true" },
-    { text: "New Arrivals", link: "/catalog?sort=latest" },
-    { text: "Trending Now", link: "/catalog?section=trending" },
-    { text: "Electronics Deals", link: "/catalog?category=electronics" },
-    { text: "Fashion Under 999", link: "/catalog?category=fashion&maxPricePaise=99900" },
-    { text: "Kids Corner", link: "/catalog?category=kids" },
+    { text: "Festive Sale", link: "/products?discount=true" },
+    { text: "New Arrivals", link: "/products?sort=latest" },
+    { text: "Trending Now", link: "/products?section=trending" },
+    { text: "Electronics Deals", link: "/products?category=electronics" },
+    { text: "Fashion Under 999", link: "/products?category=womens-fashion&maxPrice=999" },
+    { text: "Kids Corner", link: "/products?category=kids-baby" },
   ].map((banner, i) => ({
     id: randomUUID(),
     image: imageUrl(slugify(banner.text), 0),

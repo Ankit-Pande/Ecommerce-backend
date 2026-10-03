@@ -6,25 +6,21 @@ import {
   createBrand,
   createCategory,
   createProduct,
-  deleteAdminUser,
   deleteBanner,
   deleteBrand,
   deleteCategory,
   deleteProduct,
   deleteReview,
-  getAdminOrder,
   getAdminProduct,
-  getAdminUser,
   listAdminBanners,
   listAdminBrands,
   listAdminCategories,
   listAdminOrders,
+  getAdminStats,
   listAdminProducts,
   listAdminUsers,
   markOrderRefunded,
   setUserRole,
-  updateBanner,
-  updateBrand,
   updateCategory,
   updateOrderStatus,
   updateProduct,
@@ -47,8 +43,6 @@ import {
   createProductSchema,
   idParamSchema,
   setUserRoleSchema,
-  updateBannerSchema,
-  updateBrandSchema,
   updateCategorySchema,
   updateOrderStatusSchema,
   updateProductSchema,
@@ -84,27 +78,23 @@ router.delete("/categories/:id", validate(idParamSchema), deleteCategory);
 // Brands
 router.get("/brands", listAdminBrands);
 router.post("/brands", upload.single("logo"), validate(createBrandSchema), createBrand);
-router.patch("/brands/:id", upload.single("logo"), validate(updateBrandSchema), updateBrand);
 router.delete("/brands/:id", validate(idParamSchema), deleteBrand);
 
 // Banners
 router.get("/banners", listAdminBanners);
 router.post("/banners", upload.single("image"), validate(createBannerSchema), createBanner);
-router.patch("/banners/:id", upload.single("image"), validate(updateBannerSchema), updateBanner);
 router.delete("/banners/:id", validate(idParamSchema), deleteBanner);
 
 // Orders
+router.get("/stats", getAdminStats);
 router.get("/orders", validate(adminListOrderSchema), listAdminOrders);
-router.get("/orders/:id", validate(idParamSchema), getAdminOrder);
 router.patch("/orders/:id/status", validate(updateOrderStatusSchema), updateOrderStatus);
 router.patch("/orders/:id/refunded", validate(idParamSchema), markOrderRefunded);
 
 // Users (role badalna sirf SUPER_ADMIN)
 router.get("/users", validate(adminListUserSchema), listAdminUsers);
-router.get("/users/:id", validate(idParamSchema), getAdminUser);
 router.patch("/users/:id/block", validate(blockUserSchema), blockUser);
 router.patch("/users/:id/role", roleCheck("SUPER_ADMIN"), validate(setUserRoleSchema), setUserRole);
-router.delete("/users/:id", validate(idParamSchema), deleteAdminUser);
 
 // Reviews
 router.delete("/reviews/:id", validate(idParamSchema), deleteReview);

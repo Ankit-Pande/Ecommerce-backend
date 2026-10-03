@@ -82,19 +82,6 @@ export const reviewService = {
     return review;
   },
 
-  // Apna review hatao.
-  async remove(userId: string, slug: string) {
-    const productId = await activeProductId(slug);
-    await prisma.$transaction(async (tx) => {
-      await lockProduct(tx, productId);
-      const review = await tx.review.findUnique({ where: { productId_userId: { productId, userId } } });
-      if (!review) throw new AppError("Review not found", 404);
-      await tx.review.delete({ where: { id: review.id } });
-      await changeRating(tx, productId, -review.rating, -1);
-    });
-    await bumpStorefrontCache();
-  },
-
   // Admin galat review hataye.
   async removeByAdmin(reviewId: string) {
     await prisma.$transaction(async (tx) => {

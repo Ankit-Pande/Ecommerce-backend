@@ -20,7 +20,7 @@ router.post(
   verifyOtp,
 );
 
-router.post("/refresh", rateLimiter({ bucket: "refresh", windowSec: 60, max: 30 }), refreshTokens);
+router.post("/refresh", rateLimiter({ bucket: "refresh", windowSec: 60, max: 120 }), refreshTokens);
 router.post("/logout", logout);
 
 export const authRoutes = router;

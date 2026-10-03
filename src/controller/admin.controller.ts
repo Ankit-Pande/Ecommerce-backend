@@ -87,12 +87,6 @@ export const createBrand = asyncHandler(async (req: Request, res: Response) => {
   res.status(201).json({ success: true, data: brand });
 });
 
-export const updateBrand = asyncHandler(async (req: Request, res: Response) => {
-  const logo = req.file ? await uploadImage(req.file.buffer) : undefined;
-  const brand = await adminService.updateBrand(req.params.id, req.body, logo);
-  res.json({ success: true, data: brand });
-});
-
 export const deleteBrand = asyncHandler(async (req: Request, res: Response) => {
   await adminService.deleteBrand(req.params.id);
   res.json({ success: true, message: "Brand deleted" });
@@ -110,27 +104,20 @@ export const createBanner = asyncHandler(async (req: Request, res: Response) => 
   res.status(201).json({ success: true, data: banner });
 });
 
-export const updateBanner = asyncHandler(async (req: Request, res: Response) => {
-  const image = req.file ? await uploadImage(req.file.buffer) : undefined;
-  const banner = await adminService.updateBanner(req.params.id, req.body, image);
-  res.json({ success: true, data: banner });
-});
-
 export const deleteBanner = asyncHandler(async (req: Request, res: Response) => {
   await adminService.deleteBanner(req.params.id);
   res.json({ success: true, message: "Banner deleted" });
 });
 
 // ---------- Orders ----------
+export const getAdminStats = asyncHandler(async (_req: Request, res: Response) => {
+  res.json({ success: true, data: await adminService.getStats() });
+});
+
 export const listAdminOrders = asyncHandler(async (req: Request, res: Response) => {
   const query = req.query as unknown as ListQuery & { status?: OrderStatus; needsReview?: boolean };
   const result = await adminService.listOrders(query);
   res.json({ success: true, ...result });
-});
-
-export const getAdminOrder = asyncHandler(async (req: Request, res: Response) => {
-  const order = await adminService.getOrder(req.params.id);
-  res.json({ success: true, data: order });
 });
 
 export const updateOrderStatus = asyncHandler(async (req: Request, res: Response) => {
@@ -151,10 +138,6 @@ export const listAdminUsers = asyncHandler(async (req: Request, res: Response) =
   res.json({ success: true, ...result });
 });
 
-export const getAdminUser = asyncHandler(async (req: Request, res: Response) => {
-  res.json({ success: true, data: await adminService.getUser(req.params.id) });
-});
-
 export const blockUser = asyncHandler(async (req: Request, res: Response) => {
   await adminService.setUserBlock(req.user!, req.params.id, req.body.isBlocked);
   res.json({ success: true, message: "User updated" });
@@ -163,11 +146,6 @@ export const blockUser = asyncHandler(async (req: Request, res: Response) => {
 export const setUserRole = asyncHandler(async (req: Request, res: Response) => {
   await adminService.setUserRole(req.user!, req.params.id, req.body.role);
   res.json({ success: true, message: "User role updated" });
-});
-
-export const deleteAdminUser = asyncHandler(async (req: Request, res: Response) => {
-  await adminService.deleteUser(req.user!, req.params.id);
-  res.json({ success: true, message: "Account deleted" });
 });
 
 // ---------- Reviews ----------

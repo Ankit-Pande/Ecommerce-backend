@@ -6,24 +6,13 @@ import { asyncHandler } from "../utils/asyncHandler";
 import { logger } from "../config/winston";
 
 export const checkout = asyncHandler(async (req: Request, res: Response) => {
-  const { addressId, paymentMethod, idempotencyKey } = req.body;
-  const result = await orderService.checkout(req.user!.userId, addressId, paymentMethod, idempotencyKey);
+  const { addressId, paymentMethod, idempotencyKey, buyNow } = req.body;
+  const result = await orderService.checkout(req.user!.userId, addressId, paymentMethod, idempotencyKey, buyNow);
   res.status(201).json({ success: true, data: result });
 });
 
 export const retryPayment = asyncHandler(async (req: Request, res: Response) => {
   const result = await orderService.retryPayment(req.user!.userId, req.params.id);
-  res.json({ success: true, data: result });
-});
-
-export const verifyPayment = asyncHandler(async (req: Request, res: Response) => {
-  const { razorpayOrderId, razorpayPaymentId, signature } = req.body;
-  const result = await orderService.verifyPayment(
-    req.user!.userId,
-    razorpayOrderId,
-    razorpayPaymentId,
-    signature,
-  );
   res.json({ success: true, data: result });
 });
 
@@ -35,11 +24,6 @@ export const listOrders = asyncHandler(async (req: Request, res: Response) => {
   };
   const result = await orderService.listForUser(req.user!.userId, status, cursor, limit);
   res.json({ success: true, ...result });
-});
-
-export const getOrder = asyncHandler(async (req: Request, res: Response) => {
-  const order = await orderService.getForUser(req.user!.userId, req.params.id);
-  res.json({ success: true, data: order });
 });
 
 export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {

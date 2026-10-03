@@ -4,12 +4,12 @@ import { ACTIVE_CATEGORY, CARD_SELECT, productCard } from "../utils/price";
 
 const SECTION_SIZE = 10;
 
-// Home page ka saara data ek call me (5 min cache).
+// Home page ka saara data ek call me (5 min cache): banner, saari category, 4 product section.
 export const homeService = {
   async getHome() {
     return remember("home", CACHE_SECONDS, async () => {
       const liveProduct = { isActive: true, category: ACTIVE_CATEGORY };
-      const [banners, categories, brands, trending, featured, latest, offers] = await Promise.all([
+      const [banners, categories, trending, featured, latest, offers] = await Promise.all([
         prisma.banner.findMany({
           where: { isActive: true },
           select: { id: true, image: true, link: true },
@@ -29,14 +29,6 @@ export const homeService = {
             },
           },
           orderBy: { name: "asc" },
-          take: SECTION_SIZE,
-        }),
-        // Sirf wo brand jinke paas chalu product hai.
-        prisma.brand.findMany({
-          where: { isActive: true, products: { some: liveProduct } },
-          select: { id: true, name: true, slug: true, logo: true },
-          orderBy: { name: "asc" },
-          take: 12,
         }),
         prisma.product.findMany({
           where: { ...liveProduct, isTrending: true },
@@ -71,7 +63,6 @@ export const homeService = {
       return {
         banners,
         categories,
-        brands,
         trendingProducts: trending.map(productCard),
         featuredProducts: featured.map(productCard),
         latestProducts: latest.map(productCard),
