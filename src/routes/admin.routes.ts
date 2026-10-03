@@ -21,10 +21,13 @@ import {
   listAdminUsers,
   markOrderRefunded,
   setUserRole,
+  updateBanner,
+  updateBrand,
   updateCategory,
   updateOrderStatus,
   updateProduct,
   uploadImages,
+  applySale,
 } from "../controller/admin.controller";
 import { authCheck } from "../middleware/authCheck";
 import { rateLimiter } from "../middleware/rateLimiter";
@@ -42,7 +45,10 @@ import {
   createCategorySchema,
   createProductSchema,
   idParamSchema,
+  saleSchema,
   setUserRoleSchema,
+  updateBannerSchema,
+  updateBrandSchema,
   updateCategorySchema,
   updateOrderStatusSchema,
   updateProductSchema,
@@ -66,6 +72,7 @@ router.get("/products", validate(adminListProductSchema), listAdminProducts);
 router.get("/products/:id", validate(idParamSchema), getAdminProduct);
 router.post("/products", upload.array("images", 6), validate(createProductSchema), createProduct);
 router.post("/products/bulk", validate(bulkCreateProductSchema), bulkCreateProducts);
+router.post("/products/sale", validate(saleSchema), applySale);
 router.patch("/products/:id", upload.array("images", 6), validate(updateProductSchema), updateProduct);
 router.delete("/products/:id", validate(idParamSchema), deleteProduct);
 
@@ -78,11 +85,13 @@ router.delete("/categories/:id", validate(idParamSchema), deleteCategory);
 // Brands
 router.get("/brands", listAdminBrands);
 router.post("/brands", upload.single("logo"), validate(createBrandSchema), createBrand);
+router.patch("/brands/:id", validate(updateBrandSchema), updateBrand);
 router.delete("/brands/:id", validate(idParamSchema), deleteBrand);
 
 // Banners
 router.get("/banners", listAdminBanners);
 router.post("/banners", upload.single("image"), validate(createBannerSchema), createBanner);
+router.patch("/banners/:id", validate(updateBannerSchema), updateBanner);
 router.delete("/banners/:id", validate(idParamSchema), deleteBanner);
 
 // Orders

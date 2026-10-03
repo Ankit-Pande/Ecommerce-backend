@@ -49,6 +49,10 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
   res.json({ success: true, data: product });
 });
 
+export const applySale = asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await adminService.applySale(req.body) });
+});
+
 export const deleteProduct = asyncHandler(async (req: Request, res: Response) => {
   await adminService.hideProduct(req.params.id);
   res.json({ success: true, message: "Product deactivated" });
@@ -87,12 +91,20 @@ export const createBrand = asyncHandler(async (req: Request, res: Response) => {
   res.status(201).json({ success: true, data: brand });
 });
 
+export const updateBrand = asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await adminService.updateBrand(req.params.id, req.body) });
+});
+
 export const deleteBrand = asyncHandler(async (req: Request, res: Response) => {
   await adminService.deleteBrand(req.params.id);
   res.json({ success: true, message: "Brand deleted" });
 });
 
 // ---------- Banners ----------
+export const updateBanner = asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await adminService.updateBanner(req.params.id, req.body) });
+});
+
 export const listAdminBanners = asyncHandler(async (_req: Request, res: Response) => {
   res.json({ success: true, data: await adminService.listBanners() });
 });
