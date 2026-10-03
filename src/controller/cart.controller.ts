@@ -22,7 +22,3 @@ export const removeCartItem = asyncHandler(async (req: Request, res: Response) =
   res.json({ success: true, data: cart });
 });
 
-export const clearCart = asyncHandler(async (req: Request, res: Response) => {
-  const cart = await cartService.clearCart(req.user!.userId);
-  res.json({ success: true, data: cart });
-});

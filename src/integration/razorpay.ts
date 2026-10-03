@@ -36,11 +36,6 @@ export async function createRazorpayOrder(amountPaise: number, receipt: string):
   }
 }
 
-// Payment popup ke baad browser se aaya signature check karo.
-export function verifyPaymentSignature(orderId: string, paymentId: string, signature: string): boolean {
-  return signatureMatches(env.RAZORPAY_KEY_SECRET, `${orderId}|${paymentId}`, signature);
-}
-
 // Webhook ka signature check — nakli "payment ho gaya" isi se rukta hai.
 export function verifyWebhookSignature(rawBody: Buffer, signature: string): boolean {
   return signatureMatches(env.RAZORPAY_WEBHOOK_SECRET, rawBody, signature);

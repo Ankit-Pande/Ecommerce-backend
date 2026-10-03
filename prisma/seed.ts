@@ -294,7 +294,6 @@ const SUPER_ADMIN_PHONE = process.env.SUPER_ADMIN_PHONE ?? "9876543210";
 // ---------------------------------------------------------------------------
 async function clearAll() {
   await prisma.review.deleteMany();
-  await prisma.productView.deleteMany();
   await prisma.orderItem.deleteMany();
   await prisma.order.deleteMany();
   await prisma.cartItem.deleteMany();

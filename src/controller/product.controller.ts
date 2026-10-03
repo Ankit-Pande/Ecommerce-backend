@@ -2,16 +2,9 @@ import { Request, Response } from "express";
 import { productService } from "../service/product.service";
 import { reviewService } from "../service/review.service";
 import { asyncHandler } from "../utils/asyncHandler";
-import { logger } from "../config/winston";
 
 export const getProduct = asyncHandler(async (req: Request, res: Response) => {
   const product = await productService.getBySlug(req.params.slug);
-  // "Recently viewed" save karo; fail ho to bhi page khule.
-  if (req.user) {
-    productService.recordView(req.user.userId, product.id).catch((error) => {
-      logger.warn("Product view not saved", { error });
-    });
-  }
   res.json({ success: true, data: product });
 });
 
@@ -23,11 +16,6 @@ export const getProductsBySlugs = asyncHandler(async (req: Request, res: Respons
 
 export const getRelatedProducts = asyncHandler(async (req: Request, res: Response) => {
   const products = await productService.getRelated(req.params.slug);
-  res.json({ success: true, data: products });
-});
-
-export const getRecentlyViewed = asyncHandler(async (req: Request, res: Response) => {
-  const products = await productService.getRecentlyViewed(req.user!.userId);
   res.json({ success: true, data: products });
 });
 
@@ -47,7 +35,3 @@ export const saveReview = asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: review });
 });
 
-export const removeReview = asyncHandler(async (req: Request, res: Response) => {
-  await reviewService.remove(req.user!.userId, req.params.slug);
-  res.json({ success: true, message: "Review removed" });
-});

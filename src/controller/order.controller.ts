@@ -16,17 +16,6 @@ export const retryPayment = asyncHandler(async (req: Request, res: Response) => 
   res.json({ success: true, data: result });
 });
 
-export const verifyPayment = asyncHandler(async (req: Request, res: Response) => {
-  const { razorpayOrderId, razorpayPaymentId, signature } = req.body;
-  const result = await orderService.verifyPayment(
-    req.user!.userId,
-    razorpayOrderId,
-    razorpayPaymentId,
-    signature,
-  );
-  res.json({ success: true, data: result });
-});
-
 export const listOrders = asyncHandler(async (req: Request, res: Response) => {
   const { status, cursor, limit } = req.query as unknown as {
     status?: OrderStatus[];
@@ -35,11 +24,6 @@ export const listOrders = asyncHandler(async (req: Request, res: Response) => {
   };
   const result = await orderService.listForUser(req.user!.userId, status, cursor, limit);
   res.json({ success: true, ...result });
-});
-
-export const getOrder = asyncHandler(async (req: Request, res: Response) => {
-  const order = await orderService.getForUser(req.user!.userId, req.params.id);
-  res.json({ success: true, data: order });
 });
 
 export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {

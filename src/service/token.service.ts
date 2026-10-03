@@ -33,11 +33,8 @@ export const tokenService = {
   async getSessionRole(userId: string, sessionId: string): Promise<Role | null> {
     const cached = await redis.get(sessionKey(sessionId)).catch(() => null);
     if (cached) {
-      try {
-        const saved = JSON.parse(cached) as { userId: string; role: Role };
-        return saved.userId === userId ? saved.role : null;
-      } catch {
-      }
+      const saved = JSON.parse(cached) as { userId: string; role: Role };
+      return saved.userId === userId ? saved.role : null;
     }
 
     const session = await prisma.session.findUnique({

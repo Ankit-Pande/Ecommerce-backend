@@ -22,17 +22,6 @@ type CatalogQuery = {
   limit: number;
 };
 
-const LIST_SELECT = {
-  ...CARD_SELECT,
-  color: true,
-  gender: true,
-  ageGroup: true,
-  isTrending: true,
-  isFeatured: true,
-  category: { select: { name: true, slug: true } },
-  brand: { select: { name: true, slug: true, isActive: true } },
-} satisfies Prisma.ProductSelect;
-
 // Sort ke options (id se tie-break, taaki page 2 par product repeat na ho).
 const SORTS: Record<CatalogQuery["sort"], Prisma.ProductOrderByWithRelationInput[]> = {
   latest: [{ createdAt: "desc" }, { id: "desc" }],
@@ -167,20 +156,6 @@ async function typoMatchIds(text: string): Promise<string[]> {
   return rows.map((row) => row.id);
 }
 
-// Catalog ka ek product (card + colour, brand, category).
-function toItem(p: Prisma.ProductGetPayload<{ select: typeof LIST_SELECT }>) {
-  return {
-    ...productCard(p),
-    color: p.color,
-    gender: p.gender,
-    ageGroup: p.ageGroup,
-    isTrending: p.isTrending,
-    isFeatured: p.isFeatured,
-    category: p.category,
-    brand: p.brand?.isActive ? { name: p.brand.name, slug: p.brand.slug } : null,
-  };
-}
-
 export const catalogService = {
   // Product list: search + filter + sort + pages (5 min cache).
   async list(query: CatalogQuery) {
@@ -213,7 +188,7 @@ export const catalogService = {
 
       const rows = await prisma.product.findMany({
         where: { AND: words.length > 0 ? [...filters, await searchWhere(words)] : filters },
-        select: LIST_SELECT,
+        select: CARD_SELECT,
         orderBy: SORTS[query.sort],
         take: query.limit + 1,
         ...(query.cursor && { cursor: { id: query.cursor }, skip: 1 }),
@@ -225,25 +200,25 @@ export const catalogService = {
         if (ids.length === 0) return { items: [], nextCursor: null };
         const typoRows = await prisma.product.findMany({
           where: { AND: [...filters, { id: { in: ids } }] },
-          select: LIST_SELECT,
+          select: CARD_SELECT,
         });
         // Sabse milta-julta product upar rahe.
         const position = new Map(ids.map((id, index) => [id, index]));
         typoRows.sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0));
-        return { items: typoRows.slice(0, query.limit).map(toItem), nextCursor: null };
+        return { items: typoRows.slice(0, query.limit).map(productCard), nextCursor: null };
       }
 
       const page = paginate(rows, query.limit);
-      return { items: page.items.map(toItem), nextCursor: page.nextCursor };
+      return { items: page.items.map(productCard), nextCursor: page.nextCursor };
     });
   },
 
-  // Sidebar filter: is category ke brands, colours aur price range.
+  // Sidebar filter: is category ke brands aur colours.
   async filters(query: { category?: string; subcategory?: string }) {
     const cacheKey = `filters:${query.category ?? ""}:${query.subcategory ?? ""}`;
     return remember(cacheKey, CACHE_SECONDS, async () => {
       const where: Prisma.ProductWhereInput = { AND: baseFilters(query) };
-      const [brands, colors, price] = await Promise.all([
+      const [brands, colors] = await Promise.all([
         prisma.brand.findMany({
           where: { isActive: true, products: { some: where } },
           select: { id: true, name: true, slug: true },
@@ -254,14 +229,11 @@ export const catalogService = {
           where: { AND: [where, { color: { not: null } }] },
           orderBy: { color: "asc" },
         }),
-        prisma.product.aggregate({ where, _min: { sellPaise: true }, _max: { sellPaise: true } }),
       ]);
 
       return {
         brands,
         colors: colors.map((row) => row.color as string),
-        minPricePaise: price._min.sellPaise ?? 0,
-        maxPricePaise: price._max.sellPaise ?? 0,
       };
     });
   },

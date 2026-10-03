@@ -17,16 +17,6 @@ export const checkoutSchema = z.object({
     .strict(),
 });
 
-export const verifyPaymentSchema = z.object({
-  body: z
-    .object({
-      razorpayOrderId: z.string().min(1).max(100),
-      razorpayPaymentId: z.string().min(1).max(100),
-      signature: z.string().min(1).max(200),
-    })
-    .strict(),
-});
-
 export const orderIdSchema = z.object({ params: idParams });
 
 // Ek se zyada status: ?status=PENDING,CONFIRMED

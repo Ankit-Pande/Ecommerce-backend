@@ -1,7 +1,7 @@
 import { Order, OrderStatus, PaymentMethod, Prisma } from "@prisma/client";
 import { prisma, lockUser } from "../config/db";
 import { env } from "../config/env";
-import { createRazorpayOrder, verifyPaymentSignature } from "../integration/razorpay";
+import { createRazorpayOrder } from "../integration/razorpay";
 import { AppError } from "../utils/appError";
 import { bumpStorefrontCache } from "../config/cache";
 import { paginate } from "../utils/paginate";
@@ -32,7 +32,6 @@ const ORDER_FIELDS = {
 
 // Checkout ka jawab — frontend isse Razorpay popup kholta hai.
 function checkoutResponse(order: Order) {
-  const joiner = env.CHECKOUT_URL.includes("?") ? "&" : "?";
   return {
     orderId: order.id,
     status: order.status,
@@ -41,7 +40,6 @@ function checkoutResponse(order: Order) {
     paymentMethod: order.paymentMethod,
     razorpayOrderId: order.razorpayOrderId,
     razorpayKeyId: order.paymentMethod === "ONLINE" ? (env.RAZORPAY_KEY_ID ?? null) : null,
-    checkoutUrl: `${env.CHECKOUT_URL}${joiner}orderId=${encodeURIComponent(order.id)}`,
   };
 }
 
@@ -258,20 +256,6 @@ export const orderService = {
     return checkoutResponse(order);
   },
 
-  // Browser ka signature check (order confirm sirf webhook se hota hai).
-  async verifyPayment(userId: string, razorpayOrderId: string, razorpayPaymentId: string, signature: string) {
-    const order = await prisma.order.findFirst({ where: { razorpayOrderId, userId } });
-    if (!order) throw new AppError("Order not found", 404);
-    if (!verifyPaymentSignature(razorpayOrderId, razorpayPaymentId, signature)) {
-      throw new AppError("Payment verification failed", 400);
-    }
-    return {
-      status: order.status,
-      paymentStatus: order.paymentStatus,
-      message: "Payment submitted. Waiting for payment confirmation.",
-    };
-  },
-
   // Payment aa gayi (webhook): amount aur time sahi to order CONFIRM, warna review.
   async handlePaymentCaptured(
     eventId: string,
@@ -429,33 +413,5 @@ export const orderService = {
       ...(cursor && { cursor: { id: cursor }, skip: 1 }),
     });
     return paginate(orders, limit);
-  },
-
-  // User ka ek order, address aur items ke saath.
-  async getForUser(userId: string, orderId: string) {
-    const order = await prisma.order.findFirst({
-      where: { id: orderId, userId },
-      select: {
-        ...ORDER_FIELDS,
-        shipName: true,
-        shipPhone: true,
-        shipLine1: true,
-        shipLine2: true,
-        shipCity: true,
-        shipState: true,
-        shipPincode: true,
-        items: {
-          select: {
-            productId: true,
-            productName: true,
-            productImage: true,
-            pricePaise: true,
-            quantity: true,
-          },
-        },
-      },
-    });
-    if (!order) throw new AppError("Order not found", 404);
-    return order;
   },
 };

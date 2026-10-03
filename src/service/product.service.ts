@@ -3,8 +3,6 @@ import { AppError } from "../utils/appError";
 import { bumpStorefrontCache, CACHE_SECONDS, remember } from "../config/cache";
 import { ACTIVE_CATEGORY, CARD_SELECT, productCard } from "../utils/price";
 
-const VIEW_KEEP_DAYS = 90;
-
 export const productService = {
   // Product detail page (5 min cache).
   async getBySlug(slug: string) {
@@ -15,8 +13,6 @@ export const productService = {
           ...CARD_SELECT,
           description: true,
           color: true,
-          isTrending: true,
-          isFeatured: true,
           category: {
             select: {
               id: true,
@@ -31,14 +27,12 @@ export const productService = {
       // null bhi cache hota hai, taaki galat slug baar-baar DB tak na jaaye.
       if (!row) return null;
 
-      const { description, images, color, isTrending, isFeatured, category, brand } = row;
+      const { description, images, color, category, brand } = row;
       return {
         ...productCard(row),
         description,
         images,
         color,
-        isTrending,
-        isFeatured,
         category,
         brand: brand?.isActive ? { id: brand.id, name: brand.name, slug: brand.slug, logo: brand.logo } : null,
       };
@@ -87,32 +81,6 @@ export const productService = {
 
     if (!related) throw new AppError("Product not found", 404);
     return related;
-  },
-
-  // User ne product dekha — recently viewed me save.
-  async recordView(userId: string, productId: string) {
-    await prisma.productView.upsert({
-      where: { userId_productId: { userId, productId } },
-      create: { userId, productId },
-      update: { viewedAt: new Date() },
-    });
-  },
-
-  // Login user ke aakhri 5 dekhe hue product.
-  async getRecentlyViewed(userId: string) {
-    const rows = await prisma.productView.findMany({
-      where: { userId, product: { isActive: true, category: ACTIVE_CATEGORY } },
-      orderBy: { viewedAt: "desc" },
-      take: 5,
-      select: { product: { select: CARD_SELECT } },
-    });
-    return rows.map(({ product }) => productCard(product));
-  },
-
-  // 90 din purane views hatao (roz).
-  async deleteOldViews() {
-    const cutoff = new Date(Date.now() - VIEW_KEEP_DAYS * 24 * 60 * 60 * 1000);
-    await prisma.productView.deleteMany({ where: { viewedAt: { lt: cutoff } } });
   },
 
   // Khatam offer hatao: discount 0, price = MRP, date bhi saaf (har minute).

@@ -14,7 +14,6 @@ export function validate(schema: ZodSchema): RequestHandler {
       })) as ParsedRequest;
 
       if (parsed.body !== undefined) req.body = parsed.body;
-      // Express 5 me upgrade karo to ye line badalni padegi.
       if (parsed.query !== undefined) req.query = parsed.query as typeof req.query;
       if (parsed.params !== undefined) Object.assign(req.params, parsed.params);
       next();

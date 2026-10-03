@@ -6,7 +6,6 @@ import { paginate } from "../utils/paginate";
 import { finalPrice, LOW_STOCK_AT } from "../utils/price";
 import { titleCase } from "../utils/text";
 import { tokenService } from "./token.service";
-import { userService } from "./user.service";
 
 type ProductInput = {
   name: string;
@@ -303,13 +302,6 @@ export const adminService = {
     return brand;
   },
 
-  // Brand badlo.
-  async updateBrand(id: string, data: { name?: string; slug?: string; isActive?: boolean }, logo?: string) {
-    const brand = await prisma.brand.update({ where: { id }, data: { ...data, ...(logo && { logo }) } });
-    await bumpStorefrontCache();
-    return brand;
-  },
-
   // Brand delete (products ho to nahi).
   async deleteBrand(id: string) {
     const products = await prisma.product.count({ where: { brandId: id } });
@@ -335,17 +327,6 @@ export const adminService = {
   // Naya banner.
   async createBanner(data: { link?: string; position: number }, image: string) {
     const banner = await prisma.banner.create({ data: { ...data, image } });
-    await bumpStorefrontCache();
-    return banner;
-  },
-
-  // Banner badlo.
-  async updateBanner(
-    id: string,
-    data: { link?: string | null; position?: number; isActive?: boolean },
-    image?: string,
-  ) {
-    const banner = await prisma.banner.update({ where: { id }, data: { ...data, ...(image && { image }) } });
     await bumpStorefrontCache();
     return banner;
   },
@@ -410,27 +391,6 @@ export const adminService = {
     return paginate(rows, query.limit);
   },
 
-  // Ek order poori detail ke saath.
-  async getOrder(id: string) {
-    const order = await prisma.order.findUnique({
-      where: { id },
-      include: {
-        user: { select: { id: true, phone: true, name: true, email: true } },
-        items: {
-          select: {
-            productId: true,
-            productName: true,
-            productImage: true,
-            pricePaise: true,
-            quantity: true,
-          },
-        },
-      },
-    });
-    if (!order) throw new AppError("Order not found", 404);
-    return order;
-  },
-
   // ---------- Users ----------
   // Users list (phone se search).
   async listUsers(query: { q?: string; cursor?: string; limit: number }) {
@@ -452,27 +412,6 @@ export const adminService = {
     return paginate(rows, query.limit);
   },
 
-  // Ek user, address aur order ginti ke saath.
-  async getUser(id: string) {
-    const user = await prisma.user.findFirst({
-      where: { id, isDeleted: false },
-      select: {
-        id: true,
-        phone: true,
-        alternatePhone: true,
-        name: true,
-        email: true,
-        role: true,
-        isBlocked: true,
-        createdAt: true,
-        addresses: true,
-        _count: { select: { orders: true } },
-      },
-    });
-    if (!user) throw new AppError("User not found", 404);
-    return user;
-  },
-
   // User block/unblock (block par saare device se logout).
   async setUserBlock(actor: Actor, userId: string, isBlocked: boolean) {
     await checkCanManage(actor, userId);
@@ -485,11 +424,5 @@ export const adminService = {
     await checkCanManage(actor, userId);
     await prisma.user.update({ where: { id: userId }, data: { role } });
     await tokenService.revokeAllSessions(userId);
-  },
-
-  // Admin kisi user ka account delete kare.
-  async deleteUser(actor: Actor, userId: string) {
-    await checkCanManage(actor, userId);
-    await userService.deleteAccount(userId);
   },
 };

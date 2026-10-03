@@ -34,14 +34,11 @@ const start = async () => {
     }
   }, ONE_MINUTE);
 
-  // Roz (aur start par ek baar): purani sessions aur product views saaf.
+  // Roz (aur start par ek baar): purani sessions saaf.
   const dailyCleanup = async () => {
     await tokenService
       .deleteExpiredSessions()
       .catch((error) => logger.error("Session cleanup failed", { error }));
-    await productService
-      .deleteOldViews()
-      .catch((error) => logger.error("Product view cleanup failed", { error }));
   };
   dailyCleanup();
   const dailyJob = setInterval(dailyCleanup, ONE_DAY);
