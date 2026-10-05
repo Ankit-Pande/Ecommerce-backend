@@ -60,7 +60,7 @@ All responses are `{ success, data }`, `{ success, items, nextCursor }` or `{ su
 | Products | `GET /api/products/batch`, `GET /api/products/:slug`, `/related`, `/reviews` (GET, POST) |
 | Auth | `POST /api/auth/send-otp`, `verify-otp`, `refresh`, `logout` |
 | User | `/api/user/me` (GET, PATCH, DELETE), `/api/address`, `/api/cart` |
-| Orders | `POST /api/order/checkout`, `GET /api/order`, `POST /api/order/:id/payment`, `PATCH /api/order/:id/cancel` |
+| Orders | `POST /api/order/checkout`, `GET /api/order`, `GET /api/order/:id`, `POST /api/order/:id/payment`, `PATCH /api/order/:id/cancel` |
 | Webhook | `POST /api/order/webhook` (Razorpay) |
 | Admin | `/api/admin/stats`, `uploads`, `products`, `products/sale`, `categories`, `brands`, `banners`, `orders`, `users`, `reviews` |
 

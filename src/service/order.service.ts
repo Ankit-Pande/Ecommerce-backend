@@ -1,4 +1,4 @@
-import { Order, OrderStatus, PaymentMethod, Prisma } from "@prisma/client";
+import { CancelledBy, Order, OrderStatus, PaymentMethod, Prisma } from "@prisma/client";
 import { prisma, lockUser } from "../config/db";
 import { env } from "../config/env";
 import { createRazorpayOrder } from "../integration/razorpay";
@@ -28,6 +28,7 @@ const ORDER_FIELDS = {
   paymentMethod: true,
   needsReview: true,
   paymentExpiresAt: true,
+  cancelledBy: true,
   createdAt: true,
 } satisfies Prisma.OrderSelect;
 
@@ -127,8 +128,8 @@ async function lockOrder(tx: Prisma.TransactionClient, orderId: string) {
 }
 
 // Order cancel karo aur stock wapas jodo.
-async function cancelLockedOrder(tx: Prisma.TransactionClient, orderId: string) {
-  await tx.order.update({ where: { id: orderId }, data: { status: "CANCELLED" } });
+async function cancelLockedOrder(tx: Prisma.TransactionClient, orderId: string, cancelledBy: CancelledBy) {
+  await tx.order.update({ where: { id: orderId }, data: { status: "CANCELLED", cancelledBy } });
   const items = await tx.orderItem.findMany({ where: { orderId }, orderBy: { productId: "asc" } });
   for (const item of items) {
     await tx.product.update({
@@ -299,7 +300,7 @@ export const orderService = {
 
       // Deadline ke baad ya galat amount: order cancel (stock wapas), paisa admin lautayega.
       if (order.status === "PENDING") {
-        await cancelLockedOrder(tx, order.id);
+        await cancelLockedOrder(tx, order.id, "SYSTEM");
         stockReturned = true;
       }
       await tx.order.update({
@@ -328,7 +329,7 @@ export const orderService = {
           409,
         );
       }
-      await cancelLockedOrder(tx, orderId);
+      await cancelLockedOrder(tx, orderId, userId ? "USER" : "ADMIN");
     });
     await bumpStorefrontCache();
   },
@@ -391,7 +392,7 @@ export const orderService = {
         const order = await lockOrder(tx, id);
         // Lock milne tak webhook ne pay kar diya ho sakta hai.
         if (order.status !== "PENDING" || order.paymentStatus !== "PENDING") return;
-        await cancelLockedOrder(tx, id);
+        await cancelLockedOrder(tx, id, "SYSTEM");
       });
     }
     if (expired.length > 0) await bumpStorefrontCache();
@@ -415,5 +416,27 @@ export const orderService = {
       ...(cursor && { cursor: { id: cursor }, skip: 1 }),
     });
     return paginate(orders, limit);
+  },
+
+  // User ka ek order: items (photo ke saath), delivery address aur payment.
+  async getForUser(userId: string, orderId: string) {
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, userId },
+      select: {
+        ...ORDER_FIELDS,
+        shipName: true,
+        shipPhone: true,
+        shipLine1: true,
+        shipLine2: true,
+        shipCity: true,
+        shipState: true,
+        shipPincode: true,
+        items: {
+          select: { productId: true, productName: true, productImage: true, pricePaise: true, quantity: true },
+        },
+      },
+    });
+    if (!order) throw new AppError("Order not found", 404);
+    return order;
   },
 };

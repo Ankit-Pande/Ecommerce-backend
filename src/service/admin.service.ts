@@ -411,6 +411,7 @@ export const adminService = {
         paymentStatus: true,
         paymentMethod: true,
         needsReview: true,
+        cancelledBy: true,
         createdAt: true,
         shipName: true,
         shipPhone: true,

@@ -26,6 +26,11 @@ export const listOrders = asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, ...result });
 });
 
+export const getOrder = asyncHandler(async (req: Request, res: Response) => {
+  const order = await orderService.getForUser(req.user!.userId, req.params.id);
+  res.json({ success: true, data: order });
+});
+
 export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
   await orderService.cancel(req.params.id, req.user!.userId);
   res.json({ success: true, message: "Order cancelled" });

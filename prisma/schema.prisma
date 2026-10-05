@@ -37,6 +37,13 @@ enum PaymentMethod {
   ONLINE
 }
 
+// Order kisne cancel kiya: customer, admin, ya system (payment time nikal gaya / galat payment).
+enum CancelledBy {
+  USER
+  ADMIN
+  SYSTEM
+}
+
 model User {
   id             String  @id @default(uuid())
   phone          String  @unique
@@ -239,10 +246,11 @@ model Order {
 
   // ONLINE order: is waqt tak payment na aaye to cancel + stock wapas.
   paymentExpiresAt  DateTime?
-  razorpayOrderId   String?   @unique
+  razorpayOrderId   String?      @unique
   razorpayPaymentId String?
   // Payment aayi par order confirm nahi ho saka (late/galat amount) — admin dekhe.
-  needsReview       Boolean   @default(false)
+  needsReview       Boolean      @default(false)
+  cancelledBy       CancelledBy?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
