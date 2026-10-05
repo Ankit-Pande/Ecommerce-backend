@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   cancelOrder,
   checkout,
+  getOrder,
   listOrders,
   retryPayment,
 } from "../controller/order.controller";
@@ -26,6 +27,7 @@ router.post(
   checkout,
 );
 router.get("/", validate(listOrderSchema), listOrders);
+router.get("/:id", validate(orderIdSchema), getOrder);
 router.post("/:id/payment", validate(orderIdSchema), retryPayment);
 router.patch("/:id/cancel", validate(orderIdSchema), cancelOrder);
 
