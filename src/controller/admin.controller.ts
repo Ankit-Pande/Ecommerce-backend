@@ -19,7 +19,7 @@ export const uploadImages = asyncHandler(async (req: Request, res: Response) => 
 
 // ---------- Products ----------
 export const listAdminProducts = asyncHandler(async (req: Request, res: Response) => {
-  const query = req.query as unknown as ListQuery & { q?: string; lowStock?: boolean; outOfStock?: boolean };
+  const query = req.query as unknown as ListQuery & { q?: string };
   const result = await adminService.listProducts(query);
   res.json({ success: true, ...result });
 });
@@ -101,10 +101,6 @@ export const deleteBrand = asyncHandler(async (req: Request, res: Response) => {
 });
 
 // ---------- Banners ----------
-export const updateBanner = asyncHandler(async (req: Request, res: Response) => {
-  res.json({ success: true, data: await adminService.updateBanner(req.params.id, req.body) });
-});
-
 export const listAdminBanners = asyncHandler(async (_req: Request, res: Response) => {
   res.json({ success: true, data: await adminService.listBanners() });
 });
@@ -114,6 +110,10 @@ export const createBanner = asyncHandler(async (req: Request, res: Response) => 
   const image = await uploadImage(req.file.buffer);
   const banner = await adminService.createBanner(req.body, image);
   res.status(201).json({ success: true, data: banner });
+});
+
+export const updateBanner = asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await adminService.updateBanner(req.params.id, req.body) });
 });
 
 export const deleteBanner = asyncHandler(async (req: Request, res: Response) => {
