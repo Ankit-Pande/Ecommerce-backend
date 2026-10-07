@@ -85,8 +85,7 @@ function readBudget(q: string): { text: string; minPrice?: number; maxPrice?: nu
   return { text: clean(q.replace(matched, " ")), ...budget };
 }
 
-// Har shabd kahin bhi mile (naam, colour, brand, category) — "red shoes" bhi mile.
-// Brand/category ke id pehle nikalte hain, taaki product search index use kare (join se poori table padhni padti).
+// Har shabd naam/colour/brand/category me kahin bhi mile; brand-category id pehle nikalo taaki index lage.
 async function searchWhere(words: string[]): Promise<Prisma.ProductWhereInput> {
   const conditions = await Promise.all(
     words.map(async (word) => {

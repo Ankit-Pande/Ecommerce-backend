@@ -3,11 +3,11 @@ import { countHit } from "../config/redis";
 import { logger } from "../config/winston";
 import { AppError } from "../utils/appError";
 
+// bucket = route ka fixed naam; allowOnRedisDown: browsing chalne do, OTP/payment roko.
 interface RateLimitOptions {
-  bucket: string; // route ka fixed naam — req.path nahi, warna /x/1 aur /x/2 alag gine jaate
+  bucket: string;
   windowSec: number;
   max: number;
-  // Redis down ho to: true = request jaane do (browsing), false = roko (OTP/payment).
   allowOnRedisDown?: boolean;
 }
 

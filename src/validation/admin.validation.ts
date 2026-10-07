@@ -17,7 +17,6 @@ const clearableText = (max: number) =>
 const clearableEnum = <T extends readonly [string, ...string[]]>(values: T) =>
   z.preprocess(emptyToNull, z.enum(values).nullable());
 
-// ---------- Product ----------
 const productFields = {
   name: z.string().trim().min(2).max(150),
   slug,
@@ -68,7 +67,6 @@ export const adminListProductSchema = z.object({
 
 export const idParamSchema = z.object({ params: idParams });
 
-// ---------- Category ----------
 export const createCategorySchema = z.object({
   body: z
     .object({
@@ -91,7 +89,6 @@ export const updateCategorySchema = z.object({
     .strict(),
 });
 
-// ---------- Brand ----------
 export const createBrandSchema = z.object({
   body: z.object({ name: z.string().trim().min(2).max(80), slug }).strict(),
 });
@@ -101,7 +98,6 @@ export const updateBrandSchema = z.object({
   body: z.object({ name: z.string().trim().min(2).max(80).optional(), isActive: z.boolean().optional() }).strict(),
 });
 
-// ---------- Banner ----------
 // Site ka apna path ("/products?..") ya poora http(s) URL.
 const bannerLink = z
   .string()
@@ -130,7 +126,6 @@ export const updateBannerSchema = z.object({
     .strict(),
 });
 
-// ---------- Sale ----------
 // categoryId na ho to poore store par. discountPercent 0 = sale khatam.
 export const saleSchema = z.object({
   body: z
@@ -145,7 +140,6 @@ export const saleSchema = z.object({
     .strict(),
 });
 
-// ---------- Orders ----------
 export const adminListOrderSchema = z.object({
   query: z.object({
     status: orderStatus.optional(),
@@ -160,10 +154,9 @@ export const updateOrderStatusSchema = z.object({
   body: z.object({ status: z.enum(["SHIPPED", "DELIVERED", "CANCELLED"]) }).strict(),
 });
 
-// ---------- Users ----------
 export const adminListUserSchema = z.object({
   query: z.object({
-    q: z.string().trim().max(20).optional(), // phone se dhundo
+    q: z.string().trim().max(20).optional(),
     ...page(),
   }),
 });

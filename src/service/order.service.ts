@@ -47,8 +47,7 @@ function checkoutResponse(order: Order) {
 
 type BuyNow = { productId: string; quantity: number };
 
-// Order ki lines: cart ke items, ya "Buy now" me sirf ek product (cart ko chhue bina).
-// lock=true par products lock, taaki beech me price/stock na badle.
+// Order ki lines (cart ya Buy now); lock=true par products lock taaki price/stock beech me na badle.
 async function readLines(db: Prisma.TransactionClient, userId: string, lock: boolean, buyNow?: BuyNow) {
   const items = buyNow
     ? [{ cartItemId: null, ...buyNow }]
@@ -108,8 +107,7 @@ async function readLines(db: Prisma.TransactionClient, userId: string, lock: boo
   return { lines, totalPaise };
 }
 
-// Ek user ke zyada khule order na hon (stock rok ke baithne wala spam).
-// Online: abhi pay nahi hua (PENDING). COD: abhi ship nahi hua (CONFIRMED) — COD ki limit badi, asli customer kai order deta hai.
+// Khule order ki limit (stock rok ke baithne wala spam rokne ke liye): unpaid online kam, COD zyada.
 async function checkOpenOrders(tx: Prisma.TransactionClient, userId: string, paymentMethod: PaymentMethod) {
   const status = paymentMethod === "ONLINE" ? "PENDING" : "CONFIRMED";
   const limit = paymentMethod === "ONLINE" ? env.MAX_PENDING_ORDERS : MAX_OPEN_COD_ORDERS;

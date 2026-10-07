@@ -4,11 +4,12 @@ import { AppError } from "../utils/appError";
 import { generateOtp, hashOtp } from "../utils/otp";
 import { sendOtpSms } from "../integration/msg91";
 
-const OTP_TTL = 120; // OTP 2 minute valid
-const RESEND_GAP = 60; // do OTP ke beech kam se kam 60 second
+// OTP 2 min valid, do OTP ke beech 60 sec, ghante me 5, 3 galat par code khatam.
+const OTP_TTL = 120;
+const RESEND_GAP = 60;
 const ONE_HOUR = 3600;
 const MAX_SEND_PER_HOUR = 5;
-const MAX_WRONG = 3; // itne galat OTP pe code khatam, naya maango
+const MAX_WRONG = 3;
 
 const otpKey = (phone: string) => `otp:${phone}`;
 const hourKey = (phone: string) => `otp:hour:${phone}`;

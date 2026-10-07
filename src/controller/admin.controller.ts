@@ -9,7 +9,6 @@ import { AppError } from "../utils/appError";
 
 type ListQuery = { cursor?: string; limit: number };
 
-// ---------- Uploads ----------
 // Images upload karke URLs do (bulk product ke liye).
 export const uploadImages = asyncHandler(async (req: Request, res: Response) => {
   const urls = await uploadFiles(req.files as Express.Multer.File[]);
@@ -17,7 +16,6 @@ export const uploadImages = asyncHandler(async (req: Request, res: Response) => 
   res.status(201).json({ success: true, data: urls });
 });
 
-// ---------- Products ----------
 export const listAdminProducts = asyncHandler(async (req: Request, res: Response) => {
   const query = req.query as unknown as ListQuery & { q?: string };
   const result = await adminService.listProducts(query);
@@ -29,7 +27,7 @@ export const getAdminProduct = asyncHandler(async (req: Request, res: Response) 
   res.json({ success: true, data: product });
 });
 
-// Pehle slug check, phir image upload — galat request ki image upload na ho.
+// Pehle slug check, phir upload — galat request ki image upload na ho.
 export const createProduct = asyncHandler(async (req: Request, res: Response) => {
   await adminService.checkSlugFree(req.body.slug);
   const images = await uploadFiles(req.files as Express.Multer.File[]);
@@ -43,7 +41,7 @@ export const bulkCreateProducts = asyncHandler(async (req: Request, res: Respons
 });
 
 export const updateProduct = asyncHandler(async (req: Request, res: Response) => {
-  await adminService.checkProductExists(req.params.id); // na ho to upload se pehle hi 404
+  await adminService.checkProductExists(req.params.id);
   const images = await uploadFiles(req.files as Express.Multer.File[]);
   const product = await adminService.updateProduct(req.params.id, req.body, images);
   res.json({ success: true, data: product });
@@ -58,7 +56,6 @@ export const deleteProduct = asyncHandler(async (req: Request, res: Response) =>
   res.json({ success: true, message: "Product deactivated" });
 });
 
-// ---------- Categories ----------
 export const listAdminCategories = asyncHandler(async (_req: Request, res: Response) => {
   res.json({ success: true, data: await adminService.listCategories() });
 });
@@ -80,7 +77,6 @@ export const deleteCategory = asyncHandler(async (req: Request, res: Response) =
   res.json({ success: true, message: "Category deleted" });
 });
 
-// ---------- Brands ----------
 export const listAdminBrands = asyncHandler(async (_req: Request, res: Response) => {
   res.json({ success: true, data: await adminService.listBrands() });
 });
@@ -100,7 +96,6 @@ export const deleteBrand = asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, message: "Brand deleted" });
 });
 
-// ---------- Banners ----------
 export const listAdminBanners = asyncHandler(async (_req: Request, res: Response) => {
   res.json({ success: true, data: await adminService.listBanners() });
 });
@@ -121,7 +116,6 @@ export const deleteBanner = asyncHandler(async (req: Request, res: Response) => 
   res.json({ success: true, message: "Banner deleted" });
 });
 
-// ---------- Orders ----------
 export const getAdminStats = asyncHandler(async (_req: Request, res: Response) => {
   res.json({ success: true, data: await adminService.getStats() });
 });
@@ -143,7 +137,6 @@ export const markOrderRefunded = asyncHandler(async (req: Request, res: Response
   res.json({ success: true, message: "Refund recorded" });
 });
 
-// ---------- Users ----------
 export const listAdminUsers = asyncHandler(async (req: Request, res: Response) => {
   const query = req.query as unknown as ListQuery & { q?: string };
   const result = await adminService.listUsers(query);
@@ -160,7 +153,6 @@ export const setUserRole = asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, message: "User role updated" });
 });
 
-// ---------- Reviews ----------
 export const deleteReview = asyncHandler(async (req: Request, res: Response) => {
   await reviewService.removeByAdmin(req.params.id);
   res.json({ success: true, message: "Review deleted" });
