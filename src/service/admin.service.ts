@@ -70,7 +70,6 @@ async function checkCanManage(actor: Actor, userId: string) {
 }
 
 export const adminService = {
-  // ---------- Product ----------
   // Slug pehle se use me hai to 409.
   async checkSlugFree(slug: string) {
     const taken = await prisma.product.findUnique({ where: { slug }, select: { id: true } });
@@ -240,7 +239,6 @@ export const adminService = {
     return { items, nextCursor: page.nextCursor };
   },
 
-  // ---------- Category ----------
   // Saari category aur unki subcategory.
   async listCategories() {
     return prisma.category.findMany({
@@ -300,7 +298,6 @@ export const adminService = {
     await bumpStorefrontCache();
   },
 
-  // ---------- Brand ----------
   // Saare brand.
   async listBrands() {
     return prisma.brand.findMany({
@@ -336,7 +333,6 @@ export const adminService = {
     await bumpStorefrontCache();
   },
 
-  // ---------- Banner ----------
   // Saare banner, position ke kram me.
   async listBanners() {
     return prisma.banner.findMany({
@@ -365,7 +361,6 @@ export const adminService = {
     await bumpStorefrontCache();
   },
 
-  // ---------- Orders ----------
   // Dashboard ke chaar number. Sab indexed column par chhoti ginti hain (poori table nahi).
   async getStats() {
     // Din India ke time se shuru hota hai, server UTC par chale tab bhi.
@@ -420,7 +415,6 @@ export const adminService = {
     return paginate(rows, query.limit);
   },
 
-  // ---------- Users ----------
   // Users list (phone se search).
   async listUsers(query: { q?: string; cursor?: string; limit: number }) {
     const rows = await prisma.user.findMany({

@@ -64,8 +64,7 @@ model User {
   reviews   Review[]
 }
 
-// Ek row = ek device ka login. Refresh token ka jti yahin rehta hai (source of truth);
-// Redis me sirf chhoti der ka cache hai.
+// Ek row = ek device ka login; refresh token ka jti yahin (Redis sirf cache).
 model Session {
   id          String    @id @default(uuid())
   userId      String
@@ -219,8 +218,7 @@ model CartItem {
   @@unique([cartId, productId])
 }
 
-// Stock PENDING/CONFIRMED/SHIPPED/DELIVERED me reserved rehta hai.
-// CANCELLED hote hi wapas — isliye stock sirf cancel ke waqt lautaya jaata hai.
+// Stock order banne par kat-ta hai aur sirf CANCELLED par wapas aata hai.
 model Order {
   id             String @id @default(uuid())
   userId         String
@@ -284,8 +282,7 @@ model OrderItem {
   @@index([productId])
 }
 
-// Razorpay ek hi event dobara bhej sakta hai — id yahan save hoti hai taaki
-// payment do baar process na ho.
+// Razorpay ka event id — ek payment do baar process na ho.
 model WebhookEvent {
   id        String   @id
   createdAt DateTime @default(now())

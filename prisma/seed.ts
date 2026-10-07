@@ -11,20 +11,12 @@ if (process.env.NODE_ENV !== "development") {
 
 const prisma = new PrismaClient();
 
-// ---------------------------------------------------------------------------
-// Product images
-// ---------------------------------------------------------------------------
-// Picsum asli photo deta hai aur hamesha chalta hai, par photo product se match
-// nahi karegi. Asli photo Cloudinary par daalo to sirf ye ek function badlo.
+// Demo photo (Picsum); asli photo ke liye sirf ye function badlo.
 function imageUrl(slug: string, n: number): string {
   return `https://picsum.photos/seed/${slug}-${n}/600/600`;
 }
 
-// ---------------------------------------------------------------------------
-// Random — par har baar wahi
-// ---------------------------------------------------------------------------
-// Seed dobara chalao to bilkul wahi data bane, warna har run par catalog badal
-// jaata aur "kal jo product dekha tha wo kahan gaya" wali dikkat hoti.
+// Fixed seed wala random, taaki har run par bilkul wahi data bane.
 let seedState = 20260920;
 function random(): number {
   seedState = (seedState + 0x6d2b79f5) | 0;
@@ -47,12 +39,7 @@ const slugify = (text: string) =>
 const daysFromNow = (days: number) => new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-// ---------------------------------------------------------------------------
-// Catalog ka dhancha
-// ---------------------------------------------------------------------------
-// price rupee me hai — neeche paise me badal dete hain.
-// gender/ageGroup catalog filter ke liye: bacchon ke kapde me boys = Men, girls = Women + Kids.
-// colors: [] matlab is cheez ka rang nahi hota (kitaab, masala) — tab color null.
+// Catalog: price rupee me, boys = Men + Kids, girls = Women + Kids, colors [] = rang nahi (kitaab, masala).
 type Child = {
   name: string;
   item: string; // product ke naam me jo shabd aayega
@@ -288,10 +275,7 @@ const BATCH = 1000;
 // Wahi number jo .env me hai — login par auth.service bhi isi ko super admin banati hai.
 const SUPER_ADMIN_PHONE = process.env.SUPER_ADMIN_PHONE ?? "9876543210";
 
-// ---------------------------------------------------------------------------
-// Purana data hatao — seed dobara chalane par duplicate na banein.
-// Kram FK ke hisaab se hai: pehle bachche, phir maa-baap.
-// ---------------------------------------------------------------------------
+// Purana data hatao (FK ke kram me: pehle bachche, phir maa-baap).
 async function clearAll() {
   await prisma.review.deleteMany();
   await prisma.orderItem.deleteMany();
@@ -308,8 +292,7 @@ async function clearAll() {
   await prisma.user.deleteMany();
 }
 
-// Bade list ko 1000-1000 ke tukdon me daalo — ek saath 1500 row bhejne par
-// query bahut lambi ho jaati hai.
+// Badi list 1000-1000 ke tukdon me daalo, taaki query lambi na ho.
 async function insertInBatches<T>(rows: T[], insert: (chunk: T[]) => Promise<unknown>) {
   for (let i = 0; i < rows.length; i += BATCH) {
     await insert(rows.slice(i, i + BATCH));
@@ -320,7 +303,6 @@ async function main() {
   console.log("Purana data hata rahe hain...");
   await clearAll();
 
-  // ---------------- Category + Subcategory ----------------
   const parentRows = [];
   const childRows = [];
   // Product banate waqt kaam aayega: har subcategory ka id + uska dhancha.
@@ -353,7 +335,6 @@ async function main() {
   await prisma.category.createMany({ data: childRows });
   console.log(`Category: ${parentRows.length} parent + ${childRows.length} subcategory`);
 
-  // ---------------- Brand ----------------
   const brandRows = BRANDS.map((name) => ({
     id: randomUUID(),
     name,
@@ -363,7 +344,6 @@ async function main() {
   await prisma.brand.createMany({ data: brandRows });
   console.log(`Brand: ${brandRows.length}`);
 
-  // ---------------- Product ----------------
   // Har subcategory me barabar products, bacha hua pehli subcategory me.
   const perCategory = Math.floor(TOTAL_PRODUCTS / subCategories.length);
   const usedSlugs = new Set<string>();
@@ -432,7 +412,6 @@ async function main() {
     }
   }
 
-  // ---------------- User + Address ----------------
   const users = [];
   const addresses = [];
   const usedPhones = new Set<string>([SUPER_ADMIN_PHONE]);
@@ -480,7 +459,6 @@ async function main() {
     }
   }
 
-  // ---------------- Order + OrderItem ----------------
   // Har status ka order banao, taki admin panel aur "my orders" dono bharey dikhen.
   const orders = [];
   const orderItems = [];
@@ -571,7 +549,6 @@ async function main() {
     });
   }
 
-  // ---------------- Review ----------------
   // Sirf delivered wali jodi se, aur ek user ek product par ek hi baar.
   const reviews = [];
   const reviewed = new Set<string>();
@@ -612,7 +589,6 @@ async function main() {
     product.ratingAverage = found.sum / found.count;
   }
 
-  // ---------------- Banner ----------------
   const banners = [
     { text: "Festive Sale", link: "/products?discount=true" },
     { text: "New Arrivals", link: "/products?sort=latest" },
@@ -628,7 +604,6 @@ async function main() {
     isActive: true,
   }));
 
-  // ---------------- Sab DB me daalo ----------------
   await insertInBatches(products, (chunk) => prisma.product.createMany({ data: chunk }));
   console.log(`Product: ${products.length}`);
 

@@ -1,8 +1,7 @@
 import { z } from "zod";
 import { csv, idParams, orderStatus, page, uuid } from "./common";
 
-// idempotencyKey: double click ya retry par dusra order na bane.
-// buyNow: sirf ye ek product kharido, cart jaisa hai waisa rahe.
+// idempotencyKey: double click par dusra order na bane; buyNow: sirf ek product, cart jaisa hai waisa.
 export const checkoutSchema = z.object({
   body: z
     .object({
