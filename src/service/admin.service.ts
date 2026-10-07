@@ -3,7 +3,7 @@ import { prisma } from "../config/db";
 import { AppError } from "../utils/appError";
 import { bumpStorefrontCache } from "../config/cache";
 import { paginate } from "../utils/paginate";
-import { finalPrice, LOW_STOCK_AT } from "../utils/price";
+import { finalPrice } from "../utils/price";
 import { titleCase } from "../utils/text";
 import { tokenService } from "./token.service";
 
@@ -205,15 +205,12 @@ export const adminService = {
   // Admin product list (chhupe bhi), unpaid orders me ruka stock ke saath.
   async listProducts(query: {
     q?: string;
-    lowStock?: boolean;
-    outOfStock?: boolean;
     cursor?: string;
     limit: number;
   }) {
     const rows = await prisma.product.findMany({
       where: {
         ...(query.q && { name: { contains: query.q, mode: "insensitive" } }),
-        ...(query.outOfStock ? { stock: 0 } : query.lowStock ? { stock: { gt: 0, lte: LOW_STOCK_AT } } : {}),
       },
       select: {
         id: true,

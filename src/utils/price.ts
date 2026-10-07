@@ -6,7 +6,7 @@ export const ACTIVE_CATEGORY = {
   OR: [{ parentId: null }, { parent: { isActive: true } }],
 } satisfies Prisma.CategoryWhereInput;
 
-export const LOW_STOCK_AT = 5;
+const LOW_STOCK_AT = 5;
 
 // Offer ki date nikal gayi to discount 0.
 function effectiveDiscount(discountPercent: number, offerEndsAt?: Date | null): number {

@@ -62,8 +62,6 @@ export const bulkCreateProductSchema = z.object({
 export const adminListProductSchema = z.object({
   query: z.object({
     q: z.string().trim().max(100).optional(),
-    lowStock: queryBoolean.optional(),
-    outOfStock: queryBoolean.optional(),
     ...page(),
   }),
 });
