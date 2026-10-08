@@ -55,7 +55,7 @@ function toRupees(digits: string, unit?: string): number {
 }
 
 // Search text se budget nikalo aur bacha hua text search ke liye do.
-function readBudget(q: string): { text: string; minPrice?: number; maxPrice?: number } {
+export function readBudget(q: string): { text: string; minPrice?: number; maxPrice?: number } {
   const clean = (text: string) =>
     text
       .replace(/₹|\brs\b\.?/gi, " ")

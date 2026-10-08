@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { addressRoutes } from "./address.routes";
 import { adminRoutes } from "./admin.routes";
+import { assistantRoutes } from "./assistant.routes";
 import { authRoutes } from "./auth.routes";
 import { cartRoutes } from "./cart.routes";
 import { catalogRoutes } from "./catalog.routes";
@@ -21,5 +22,6 @@ router.use("/address", addressRoutes);
 router.use("/cart", cartRoutes);
 router.use("/order", orderRoutes);
 router.use("/admin", adminRoutes);
+router.use("/assistant", assistantRoutes);
 
 export const apiRoutes = router;

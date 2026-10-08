@@ -2,8 +2,8 @@ datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
   directUrl  = env("DIRECT_URL")
-  // Typo wali search (similarity) aur ILIKE ke trigram index ke liye.
-  extensions = [pg_trgm]
+  // pg_trgm: typo wali search aur ILIKE index; vector: AI ki meaning wali search.
+  extensions = [pg_trgm, vector]
 }
 
 generator client {
@@ -170,6 +170,9 @@ model Product {
   ratingSum     Int   @default(0)
   ratingCount   Int   @default(0)
   ratingAverage Float @default(0)
+
+  // AI search ka meaning (Gemini embedding). HNSW index migration me hai — naye migrate dev me "DROP INDEX Product_embedding_idx" aaye to hata dena.
+  embedding Unsupported("halfvec(768)")?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

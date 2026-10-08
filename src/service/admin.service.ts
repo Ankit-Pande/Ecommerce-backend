@@ -5,6 +5,7 @@ import { bumpStorefrontCache } from "../config/cache";
 import { paginate } from "../utils/paginate";
 import { finalPrice } from "../utils/price";
 import { titleCase } from "../utils/text";
+import { embeddingService } from "./embedding.service";
 import { tokenService } from "./token.service";
 
 type ProductInput = {
@@ -25,6 +26,9 @@ type ProductInput = {
 };
 
 type Actor = { userId: string; role: Role };
+
+// In fields se product ka embedding banta hai.
+const TEXT_FIELDS = ["name", "description", "brandId", "categoryId", "color", "gender", "ageGroup"] as const;
 
 // Form data se product ki DB row banao (single aur bulk dono ke liye).
 function productRow(p: ProductInput, images: string[]) {
@@ -87,6 +91,7 @@ export const adminService = {
     if (images.length === 0) throw new AppError("At least one product image required", 400);
     const product = await prisma.product.create({ data: productRow(data, images) });
     await bumpStorefrontCache();
+    embeddingService.syncInBackground([product.id]);
     return product;
   },
 
@@ -111,6 +116,11 @@ export const adminService = {
     if (toCreate.length > 0) {
       await prisma.product.createMany({ data: toCreate.map((p) => productRow(p, p.images)) });
       await bumpStorefrontCache();
+      const created = await prisma.product.findMany({
+        where: { slug: { in: toCreate.map((p) => p.slug) } },
+        select: { id: true },
+      });
+      embeddingService.syncInBackground(created.map((p) => p.id));
     }
     return { created: toCreate.length, skipped };
   },
@@ -147,6 +157,8 @@ export const adminService = {
       });
     });
     await bumpStorefrontCache();
+    // Naam/description/category jaisa kuch badla to AI search ka meaning bhi naya.
+    if (TEXT_FIELDS.some((field) => data[field] !== undefined)) embeddingService.syncInBackground([id]);
     return product;
   },
 

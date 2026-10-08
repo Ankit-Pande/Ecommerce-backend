@@ -28,3 +28,9 @@ export const authCheck: RequestHandler = async (req, _res, next) => {
     next(error);
   }
 };
+
+// Login optional: token aaya to wahi check (galat ho to 401), na aaye to guest.
+export const optionalAuth: RequestHandler = (req, res, next) => {
+  if (!req.headers.authorization) return next();
+  return authCheck(req, res, next);
+};

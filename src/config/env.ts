@@ -47,6 +47,11 @@ const schema = z
     RAZORPAY_WEBHOOK_SECRET: neededInProd,
     PAYMENT_WINDOW_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
     MAX_PENDING_ORDERS: z.coerce.number().int().min(1).max(10).default(2),
+
+    // Key na ho to AI sirf instant search karega (meaning wali search aur LLM band).
+    GEMINI_API_KEY: z.string().optional(),
+    GEMINI_CHAT_MODEL: z.string().default("gemini-2.5-flash"),
+    GEMINI_EMBED_MODEL: z.string().default("gemini-embedding-001"),
   })
   .refine(
     (v) => new Set([v.JWT_ACCESS_SECRET, v.JWT_REFRESH_SECRET, v.OTP_SECRET]).size === 3,
