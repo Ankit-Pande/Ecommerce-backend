@@ -31,15 +31,16 @@ const SORTS: Record<CatalogQuery["sort"], Prisma.ProductOrderByWithRelationInput
   rating: [{ ratingAverage: "desc" }, { id: "desc" }],
 };
 
-// Search text me price pehchano: "under 2000", "20k tak", "5000 se 20000", "above 1 lakh".
+// Search text me price pehchano: "under 2000", "20k tak", "500 rupee me", "5000 se 20000", "above 1 lakh".
 const AMOUNT = String.raw`(\d[\d,]*(?:\.\d+)?)\s*(k|hazar|lakh|lac)?\b`;
+const RUPEE = String.raw`(?:rs\.?|rupees?|rupaye|rupay)?`;
 const RANGE = new RegExp(String.raw`${AMOUNT}\s*(?:-|to|se)\s*${AMOUNT}`, "i");
 const BELOW = new RegExp(
-  String.raw`(?:under|below|upto|up to|less than|max)\s*(?:rs\.?|₹)?\s*${AMOUNT}|${AMOUNT}\s*(?:tak|ke andar|ke neeche|se kam)`,
+  String.raw`(?:under|below|upto|up to|less than|max)\s*(?:rs\.?|₹)?\s*${AMOUNT}|${AMOUNT}\s*${RUPEE}\s*(?:tak|ke andar|ke ander|andar|ander|ke neeche|se kam|me|mein)\b`,
   "i",
 );
 const ABOVE = new RegExp(
-  String.raw`(?:above|over|more than|min)\s*(?:rs\.?|₹)?\s*${AMOUNT}|${AMOUNT}\s*(?:se upar|se zyada|ke upar)`,
+  String.raw`(?:above|over|more than|min)\s*(?:rs\.?|₹)?\s*${AMOUNT}|${AMOUNT}\s*${RUPEE}\s*(?:se upar|se zyada|ke upar)`,
   "i",
 );
 
