@@ -1,5 +1,5 @@
 import { prisma } from "../config/db";
-import { disconnectRedis } from "../config/redis";
+import { redis } from "../config/redis";
 import { geminiReady } from "../integration/gemini";
 import { embeddingService } from "../service/embedding.service";
 
@@ -8,8 +8,10 @@ async function main() {
   if (!geminiReady) throw new Error("GEMINI_API_KEY is missing");
   let done = 0;
   for (;;) {
-    const ids = await embeddingService.missingIds(500);
-    if (ids.length === 0) break;
+    const rows = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "Product" WHERE "embedding" IS NULL AND "isActive" = true LIMIT 500`;
+    if (rows.length === 0) break;
+    const ids = rows.map((row) => row.id);
     await embeddingService.syncProducts(ids);
     done += ids.length;
     console.log(`Embedded ${done} products`);
@@ -24,5 +26,5 @@ main()
   })
   .finally(async () => {
     await prisma.$disconnect();
-    await disconnectRedis();
+    redis.disconnect();
   });

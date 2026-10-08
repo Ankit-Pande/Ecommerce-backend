@@ -2,7 +2,7 @@ import { env } from "../config/env";
 import { AppError } from "../utils/appError";
 
 const BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
-export const EMBED_SIZE = 768;
+const EMBED_SIZE = 768;
 
 export const geminiReady = Boolean(env.GEMINI_API_KEY);
 

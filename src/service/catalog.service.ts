@@ -45,7 +45,7 @@ const ABOVE = new RegExp(
 
 const MIN_SEARCH_LENGTH = 2;
 
-const toPaise = (rupees?: number) => (rupees === undefined ? undefined : Math.round(rupees * 100));
+export const toPaise = (rupees?: number) => (rupees === undefined ? undefined : Math.round(rupees * 100));
 
 // "20" + "k" -> 20000, "1" + "lakh" -> 100000.
 function toRupees(digits: string, unit?: string): number {

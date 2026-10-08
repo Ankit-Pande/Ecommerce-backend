@@ -2,16 +2,14 @@ import { z } from "zod";
 import { prisma } from "../config/db";
 import { GeminiTool } from "../integration/gemini";
 import { AppError } from "../utils/appError";
-import { productCard } from "../utils/price";
 import { uuid } from "../validation/common";
-import { findProducts, readQuestion } from "./assistant.search";
+import { Card, findProducts, readQuestion } from "./assistant.search";
 import { adminService } from "./admin.service";
 import { cartService } from "./cart.service";
 import { orderService } from "./order.service";
 
-type Card = ReturnType<typeof productCard>;
 export type ToolUser = { userId: string; isAdmin: boolean };
-export type ToolOutput = { data: unknown; products?: Card[] };
+type ToolOutput = { data: unknown; products?: Card[] };
 
 type Tool = {
   declaration: GeminiTool;
@@ -36,7 +34,8 @@ const brief = (card: Card) => ({
   stock: card.stockStatus,
 });
 
-const OBJECT = (properties: Record<string, unknown>, required: string[] = []) => ({
+// Tool ke inputs ka Gemini wala format.
+const params = (properties: Record<string, unknown>, required: string[] = []) => ({
   type: "OBJECT",
   properties,
   required,
@@ -48,7 +47,7 @@ const TOOLS: Record<string, Tool> = {
       name: "search_products",
       description:
         "Search the store. Call once per product type (e.g. shoes, jeans, shirt separately). Query can include who it is for, budget and words like cheap/best/offer/trending.",
-      parameters: OBJECT({ query: { type: "STRING" } }, ["query"]),
+      parameters: params({ query: { type: "STRING" } }, ["query"]),
     },
     schema: z.object({ query: z.string().trim().min(2).max(120) }),
     async run(_user, args) {
@@ -75,7 +74,7 @@ const TOOLS: Record<string, Tool> = {
     declaration: {
       name: "add_to_cart",
       description: "Add a product (id from search_products) to the cart.",
-      parameters: OBJECT({ productId: { type: "STRING" }, quantity: { type: "INTEGER" } }, ["productId"]),
+      parameters: params({ productId: { type: "STRING" }, quantity: { type: "INTEGER" } }, ["productId"]),
     },
     schema: z.object({ productId: uuid, quantity: z.number().int().min(1).max(10).default(1) }),
     async run(user, args) {
@@ -88,7 +87,7 @@ const TOOLS: Record<string, Tool> = {
     declaration: {
       name: "remove_from_cart",
       description: "Remove a product (id from get_cart) from the cart.",
-      parameters: OBJECT({ productId: { type: "STRING" } }, ["productId"]),
+      parameters: params({ productId: { type: "STRING" } }, ["productId"]),
     },
     schema: z.object({ productId: uuid }),
     async run(user, args) {
@@ -101,7 +100,7 @@ const TOOLS: Record<string, Tool> = {
     declaration: {
       name: "list_orders",
       description: "User's latest 5 orders, newest first. cancelled=true gives only cancelled orders.",
-      parameters: OBJECT({ cancelled: { type: "BOOLEAN" } }),
+      parameters: params({ cancelled: { type: "BOOLEAN" } }),
     },
     schema: z.object({ cancelled: z.boolean().optional() }),
     async run(user, args) {
@@ -125,7 +124,7 @@ const TOOLS: Record<string, Tool> = {
     declaration: {
       name: "cancel_order",
       description: "Cancel one of the user's orders (orderId from list_orders). The user must confirm first.",
-      parameters: OBJECT({ orderId: { type: "STRING" } }, ["orderId"]),
+      parameters: params({ orderId: { type: "STRING" } }, ["orderId"]),
     },
     schema: z.object({ orderId: uuid }),
     async confirmText(user, args) {
@@ -143,7 +142,7 @@ const TOOLS: Record<string, Tool> = {
     declaration: {
       name: "admin_find_products",
       description: "Admin: find products by name with stock, active, trending, featured and offer details.",
-      parameters: OBJECT({ name: { type: "STRING" } }, ["name"]),
+      parameters: params({ name: { type: "STRING" } }, ["name"]),
     },
     schema: z.object({ name: z.string().trim().min(2).max(120) }),
     async run(_user, args) {
@@ -197,7 +196,7 @@ const TOOLS: Record<string, Tool> = {
       name: "admin_update_product",
       description:
         "Admin: change a product (id from admin_find_products): trending, featured, active (show/hide), stock, or endOffer=true to remove its discount. Admin must confirm first.",
-      parameters: OBJECT(
+      parameters: params(
         {
           productId: { type: "STRING" },
           isTrending: { type: "BOOLEAN" },

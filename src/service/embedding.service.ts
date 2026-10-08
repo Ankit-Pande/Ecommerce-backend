@@ -10,7 +10,7 @@ const QUERY_VECTOR_SECONDS = 7 * 24 * 3600;
 // Isse door (cosine distance) wala product sawal se mel nahi khata.
 const MAX_DISTANCE = 0.45;
 
-export type SemanticFilters = {
+type SemanticFilters = {
   gender?: string[];
   ageGroup?: string[];
   minPaise?: number;
@@ -86,13 +86,6 @@ export const embeddingService = {
   // Admin ke save ke baad background me sync; fail ho to bas log (script baad me bhar degi).
   syncInBackground(ids: string[]) {
     this.syncProducts(ids).catch((error) => logger.error("Embedding sync failed", { error, count: ids.length }));
-  },
-
-  // Jin chalu products ka embedding nahi bana, unki ids (script ke liye).
-  async missingIds(limit: number) {
-    const rows = await prisma.$queryRaw<{ id: string }[]>`
-      SELECT "id" FROM "Product" WHERE "embedding" IS NULL AND "isActive" = true LIMIT ${limit}`;
-    return rows.map((row) => row.id);
   },
 
   // Meaning se milte chalu products ki ids, sabse paas wale pehle.

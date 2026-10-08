@@ -2,14 +2,14 @@ import { createHash } from "crypto";
 import { prisma } from "../config/db";
 import { CACHE_SECONDS, remember } from "../config/cache";
 import { CARD_SELECT, productCard } from "../utils/price";
-import { catalogService, readBudget } from "./catalog.service";
+import { catalogService, readBudget, toPaise } from "./catalog.service";
 import { embeddingService } from "./embedding.service";
 
 export const PAGE_SIZE = 5;
 const MAX_RESULTS = 50;
 
 type Sort = "latest" | "price_asc" | "price_desc" | "discount" | "rating";
-type Card = ReturnType<typeof productCard>;
+export type Card = ReturnType<typeof productCard>;
 
 // Kiske liye: shabd -> gender/ageGroup (Unisex hamesha saath me).
 const WHO: { pattern: RegExp; gender?: string[]; ageGroup?: string }[] = [
@@ -41,7 +41,7 @@ const STOP_WORDS = new Set(
   products product item items saman samaan`.split(/\s+/),
 );
 
-export type Question = {
+type Question = {
   words: string;
   meaning: string;
   gender?: string[];
@@ -52,8 +52,6 @@ export type Question = {
   minPaise?: number;
   maxPaise?: number;
 };
-
-const toPaise = (rupees?: number) => (rupees === undefined ? undefined : Math.round(rupees * 100));
 
 // Sawal se search ke shabd, price, kiske liye aur sort nikalo.
 export function readQuestion(question: string): Question {

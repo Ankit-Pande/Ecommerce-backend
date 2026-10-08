@@ -2,11 +2,9 @@ import { redis, countHit } from "../config/redis";
 import { logger } from "../config/winston";
 import { chatOnce, GeminiContent, GeminiPart, geminiReady } from "../integration/gemini";
 import { AppError } from "../utils/appError";
-import { productCard } from "../utils/price";
-import { findProducts, hasSearch, PAGE_SIZE, readQuestion } from "./assistant.search";
+import { Card, findProducts, hasSearch, PAGE_SIZE, readQuestion } from "./assistant.search";
 import { pickTool, toolsFor, ToolUser } from "./assistant.tools";
 
-type Card = ReturnType<typeof productCard>;
 type Message = { role: "user" | "assistant"; content: string };
 type ChatInput = { messages: Message[]; page: number; confirm?: boolean };
 type ChatReply = { reply: string; products?: Card[]; hasMore?: boolean; confirm?: boolean };
@@ -18,7 +16,7 @@ const BLOCK_SEC = 24 * 3600;
 const PENDING_SEC = 300;
 const MAX_ROUNDS = 4;
 
-export const ASK_WHO = "Kiske liye chahiye — Men, Women ya Kids?";
+const ASK_WHO = "Kiske liye chahiye — Men, Women ya Kids?";
 const NOT_FOUND =
   "Is sawal se mel khata koi product nahi mila. Main sirf ApnaKart ke products, cart aur orders me madad kar sakta hoon.";
 const FALLBACK = "Maaf kijiye, abhi jawab nahi de paaya. Dobara try karein.";
