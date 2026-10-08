@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import { prisma } from "../config/db";
+import { logger } from "../config/winston";
 import { CACHE_SECONDS, remember } from "../config/cache";
 import { CARD_SELECT, productCard } from "../utils/price";
 import { catalogService, readBudget, toPaise } from "./catalog.service";
@@ -108,6 +109,7 @@ async function allMatches(q: Question): Promise<Card[]> {
   });
   if (instant.items.length > 0 || !q.words) return instant.items;
 
+  // Meaning wali search fail ho (Gemini limit) to khaali, chat na ruke.
   const key = createHash("sha1").update(JSON.stringify(q)).digest("hex");
   return remember(`ai:semantic:${key}`, CACHE_SECONDS, async () => {
     const ids = await embeddingService.searchIds(q.meaning, q, MAX_RESULTS);
@@ -116,6 +118,9 @@ async function allMatches(q: Question): Promise<Card[]> {
     const position = new Map(ids.map((id, index) => [id, index]));
     rows.sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0));
     return rows.map(productCard);
+  }).catch((error) => {
+    logger.warn("Semantic search skipped", { error: (error as Error).message });
+    return [];
   });
 }
 

@@ -23,6 +23,7 @@ async function callGemini<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(15000),
   });
+  if (res.status === 429) throw new AppError("AI is busy right now, please try again in a minute", 429);
   if (!res.ok) throw new AppError(`AI service error (${res.status})`, 503);
   return (await res.json()) as T;
 }

@@ -20,7 +20,7 @@ async function main() {
       done += rows.length;
       console.log(`Embedded ${done} products`);
     } catch (error) {
-      if (!(error instanceof AppError && error.message.includes("429"))) throw error;
+      if (!(error instanceof AppError && error.statusCode === 429)) throw error;
       console.log("Gemini limit (429), 1 minute ruk kar dobara...");
       await new Promise((resolve) => setTimeout(resolve, WAIT_MS));
     }
