@@ -5,18 +5,15 @@ import { asyncHandler } from "../utils/asyncHandler";
 import { AppError } from "../utils/appError";
 import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from "../utils/cookies";
 
-// Access token jawab me jaata hai, refresh token aisi cookie me jise browser ka JavaScript padh na sake.
-
+// Phone par OTP bhejo.
 export const sendOtp = asyncHandler(async (req: Request, res: Response) => {
   await authService.requestOtp(req.body.phone);
   res.json({ success: true, message: "OTP sent successfully" });
 });
 
+// OTP sahi ho to login: access token jawab me, refresh token cookie me.
 export const verifyOtp = asyncHandler(async (req: Request, res: Response) => {
-  const { user, accessToken, refreshToken } = await authService.verifyOtpAndLogin(
-    req.body.phone,
-    req.body.otp,
-  );
+  const { user, accessToken, refreshToken } = await authService.verifyOtpAndLogin(req.body.phone, req.body.otp);
   setRefreshCookie(res, refreshToken);
   res.json({
     success: true,
@@ -34,6 +31,7 @@ export const verifyOtp = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
+// Cookie wale refresh token se naya access token do.
 export const refreshTokens = asyncHandler(async (req: Request, res: Response) => {
   const refreshToken = readRefreshCookie(req);
   if (!refreshToken) throw new AppError("Refresh token required", 401);
@@ -43,6 +41,7 @@ export const refreshTokens = asyncHandler(async (req: Request, res: Response) =>
   res.json({ success: true, data: { accessToken: tokens.accessToken } });
 });
 
+// Logout: session band aur cookie hatao.
 export const logout = asyncHandler(async (req: Request, res: Response) => {
   const refreshToken = readRefreshCookie(req);
   if (refreshToken) await tokenService.logout(refreshToken);

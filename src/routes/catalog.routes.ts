@@ -6,7 +6,7 @@ import { catalogFiltersSchema, catalogSchema } from "../validation/catalog.valid
 
 const router = Router();
 
-// Search (q) wali request par alag limit — har naya search DB tak jaata hai.
+// Search wali request par alag limit (minute me 30), kyunki har naya search DB tak jaata hai.
 const searchLimiter = rateLimiter({
   name: "catalog-search",
   seconds: 60,

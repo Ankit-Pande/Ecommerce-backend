@@ -1,6 +1,5 @@
 import { Prisma } from "@prisma/client";
 
-// Product tabhi dikhe jab uski category aur parent category dono chalu hon.
 export const ACTIVE_CATEGORY = {
   isActive: true,
   OR: [{ parentId: null }, { parent: { isActive: true } }],
@@ -32,7 +31,6 @@ function ratingInfo(sum: number, count: number) {
   return { average: count === 0 ? 0 : Math.round((sum / count) * 10) / 10, count };
 }
 
-// Product card ke liye DB se sirf ye fields lo.
 export const CARD_SELECT = {
   id: true,
   name: true,

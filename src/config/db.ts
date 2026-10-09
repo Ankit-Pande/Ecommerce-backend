@@ -27,3 +27,8 @@ export async function lockUser(db: Prisma.TransactionClient, userId: string): Pr
   if (!user || user.isDeleted) throw new AppError("Account deleted", 403);
   if (user.isBlocked) throw new AppError("User blocked", 403);
 }
+
+// Product ki row rok lo, taaki ek saath do kaam (jaise do admin edit ya do review) uska data galat na karein.
+export async function lockProduct(db: Prisma.TransactionClient, productId: string): Promise<void> {
+  await db.$queryRaw`SELECT "id" FROM "Product" WHERE "id" = ${productId} FOR UPDATE`;
+}

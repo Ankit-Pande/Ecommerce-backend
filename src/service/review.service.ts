@@ -1,8 +1,8 @@
 import { Prisma } from "@prisma/client";
-import { prisma } from "../config/db";
+import { lockProduct, prisma } from "../config/db";
 import { AppError } from "../utils/appError";
 import { clearStoreCache } from "../config/cache";
-import { paginate } from "../utils/paginate";
+import { pageQuery, paginate } from "../utils/paginate";
 import { ACTIVE_CATEGORY } from "../utils/price";
 
 // Slug se chalu product ki id, na mile to 404.
@@ -13,11 +13,6 @@ async function activeProductId(slug: string) {
   });
   if (!product) throw new AppError("Product not found", 404);
   return product.id;
-}
-
-// Product ko rok lo, taaki ek saath do review aayein to rating ki ginti galat na ho.
-async function lockProduct(db: Prisma.TransactionClient, productId: string) {
-  await db.$queryRaw`SELECT "id" FROM "Product" WHERE "id" = ${productId} FOR UPDATE`;
 }
 
 // Product ki rating ginti badlo aur average dobara nikalo.
@@ -51,8 +46,7 @@ export const reviewService = {
         user: { select: { id: true, name: true } },
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: limit + 1,
-      ...(cursor && { cursor: { id: cursor }, skip: 1 }),
+      ...pageQuery(cursor, limit),
     });
     return paginate(reviews, limit);
   },
@@ -60,36 +54,35 @@ export const reviewService = {
   // Review do (sirf delivered order wala customer); dobara diya to purana update.
   async save(userId: string, slug: string, rating: number, comment?: string) {
     const productId = await activeProductId(slug);
-    const delivered = await prisma.orderItem.findFirst({
+    const deliveredItem = await prisma.orderItem.findFirst({
       where: { productId, order: { userId, status: "DELIVERED" } },
       select: { id: true },
     });
-    if (!delivered) throw new AppError("You can review a product only after its order is delivered.", 403);
+    if (!deliveredItem) throw new AppError("You can review a product only after its order is delivered.", 403);
 
     const review = await prisma.$transaction(async (db) => {
       await lockProduct(db, productId);
-      const old = await db.review.findUnique({ where: { productId_userId: { productId, userId } } });
+      const previous = await db.review.findUnique({ where: { productId_userId: { productId, userId } } });
       const saved = await db.review.upsert({
         where: { productId_userId: { productId, userId } },
         create: { productId, userId, rating, comment },
         update: { rating, comment },
         select: { id: true, rating: true, comment: true, createdAt: true },
       });
-      await changeRating(db, productId, rating - (old?.rating ?? 0), old ? 0 : 1);
+      await changeRating(db, productId, rating - (previous?.rating ?? 0), previous ? 0 : 1);
       return saved;
     });
     await clearStoreCache();
     return review;
   },
 
-  // Admin galat review hataye.
+  // Admin galat review hataye aur product ki rating dobara nikale.
   async removeByAdmin(reviewId: string) {
     await prisma.$transaction(async (db) => {
       const found = await db.review.findUnique({ where: { id: reviewId }, select: { productId: true } });
       if (!found) throw new AppError("Review not found", 404);
       await lockProduct(db, found.productId);
 
-      // Rokne ke baad review dobara padho, beech me user ne badal diya ho sakta hai.
       const review = await db.review.findUnique({ where: { id: reviewId }, select: { rating: true } });
       if (!review) throw new AppError("Review not found", 404);
       await db.review.delete({ where: { id: reviewId } });

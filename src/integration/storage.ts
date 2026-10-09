@@ -4,7 +4,6 @@ import { env } from "../config/env";
 import { logger } from "../config/winston";
 import { AppError } from "../utils/appError";
 
-// Cloudinary (image rakhne ki jagah) ki keys.
 cloudinary.config({
   cloud_name: env.CLOUDINARY_CLOUD_NAME,
   api_key: env.CLOUDINARY_API_KEY,

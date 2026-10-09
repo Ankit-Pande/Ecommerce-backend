@@ -7,7 +7,6 @@ import { chatSchema } from "../validation/assistant.validation";
 
 const router = Router();
 
-// Guest bhi chala sake; ek minute me 15 se zyada sawal nahi.
 router.post(
   "/chat",
   optionalAuth,

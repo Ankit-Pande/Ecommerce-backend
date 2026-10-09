@@ -4,11 +4,11 @@ import { ACTIVE_CATEGORY, CARD_SELECT, productCard } from "../utils/price";
 
 const SECTION_SIZE = 10;
 
-// Home page ka saara data ek call me (5 min cache): banner, saari category, 4 product section.
 export const homeService = {
+  // Home page ka saara data ek baar me: banner, saari category aur 4 product section (5 minute cache).
   async getHome() {
     return getOrSetCache("home", CACHE_SECONDS, async () => {
-      const liveProduct = { isActive: true, category: ACTIVE_CATEGORY };
+      const visibleProduct = { isActive: true, category: ACTIVE_CATEGORY };
       const [banners, categories, trending, featured, latest, offers] = await Promise.all([
         prisma.banner.findMany({
           where: { isActive: true },
@@ -31,26 +31,26 @@ export const homeService = {
           orderBy: { name: "asc" },
         }),
         prisma.product.findMany({
-          where: { ...liveProduct, isTrending: true },
+          where: { ...visibleProduct, isTrending: true },
           select: CARD_SELECT,
           orderBy: { updatedAt: "desc" },
           take: SECTION_SIZE,
         }),
         prisma.product.findMany({
-          where: { ...liveProduct, isFeatured: true },
+          where: { ...visibleProduct, isFeatured: true },
           select: CARD_SELECT,
           orderBy: { updatedAt: "desc" },
           take: SECTION_SIZE,
         }),
         prisma.product.findMany({
-          where: liveProduct,
+          where: visibleProduct,
           select: CARD_SELECT,
           orderBy: { createdAt: "desc" },
           take: SECTION_SIZE,
         }),
         prisma.product.findMany({
           where: {
-            ...liveProduct,
+            ...visibleProduct,
             discountPercent: { gt: 0 },
             OR: [{ offerEndsAt: null }, { offerEndsAt: { gt: new Date() } }],
           },

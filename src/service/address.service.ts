@@ -14,7 +14,6 @@ type AddressInput = {
 
 const MAX_ADDRESSES = 5;
 
-// Address ke saare kaam: har badlav user ko rok kar hota hai, taaki do default address na ban jayein.
 export const addressService = {
   // User ke saare address (default pehle).
   async list(userId: string) {
@@ -41,14 +40,13 @@ export const addressService = {
     });
   },
 
-  // Address badlo.
+  // Address badlo; default address ko seedha non-default nahi kar sakte (pehle doosra default chuno).
   async update(userId: string, id: string, data: Partial<AddressInput>) {
     return prisma.$transaction(async (db) => {
       await lockUser(db, userId);
-      const existing = await db.address.findFirst({ where: { id, userId } });
-      if (!existing) throw new AppError("Address not found", 404);
-      // User bina default address ke na rahe.
-      if (existing.isDefault && data.isDefault === false) {
+      const address = await db.address.findFirst({ where: { id, userId } });
+      if (!address) throw new AppError("Address not found", 404);
+      if (address.isDefault && data.isDefault === false) {
         throw new AppError("Set another address as default first", 400);
       }
 
@@ -66,13 +64,13 @@ export const addressService = {
   async remove(userId: string, id: string) {
     await prisma.$transaction(async (db) => {
       await lockUser(db, userId);
-      const existing = await db.address.findFirst({ where: { id, userId } });
-      if (!existing) throw new AppError("Address not found", 404);
+      const address = await db.address.findFirst({ where: { id, userId } });
+      if (!address) throw new AppError("Address not found", 404);
       await db.address.delete({ where: { id } });
 
-      if (!existing.isDefault) return;
-      const next = await db.address.findFirst({ where: { userId }, orderBy: { createdAt: "desc" } });
-      if (next) await db.address.update({ where: { id: next.id }, data: { isDefault: true } });
+      if (!address.isDefault) return;
+      const newest = await db.address.findFirst({ where: { userId }, orderBy: { createdAt: "desc" } });
+      if (newest) await db.address.update({ where: { id: newest.id }, data: { isDefault: true } });
     });
   },
 };

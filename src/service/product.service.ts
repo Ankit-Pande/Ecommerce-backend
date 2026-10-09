@@ -4,10 +4,10 @@ import { clearStoreCache, CACHE_SECONDS, getOrSetCache } from "../config/cache";
 import { ACTIVE_CATEGORY, CARD_SELECT, productCard } from "../utils/price";
 
 export const productService = {
-  // Product detail page (5 min cache).
+  // Product detail page ka data; galat slug bhi cache hota hai taaki baar-baar DB na jaye (5 minute cache).
   async getBySlug(slug: string) {
     const product = await getOrSetCache(`product:${slug}`, CACHE_SECONDS, async () => {
-      const row = await prisma.product.findFirst({
+      const found = await prisma.product.findFirst({
         where: { slug, isActive: true, category: ACTIVE_CATEGORY },
         select: {
           ...CARD_SELECT,
@@ -24,12 +24,11 @@ export const productService = {
           brand: { select: { id: true, name: true, slug: true, logo: true, isActive: true } },
         },
       });
-      // null bhi cache hota hai, taaki galat slug baar-baar DB tak na jaaye.
-      if (!row) return null;
+      if (!found) return null;
 
-      const { description, images, color, category, brand } = row;
+      const { description, images, color, category, brand } = found;
       return {
-        ...productCard(row),
+        ...productCard(found),
         description,
         images,
         color,
@@ -43,8 +42,8 @@ export const productService = {
   },
 
   // Kai slug ke product ek saath, usi kram me (guest ka recently viewed).
-  async getManyBySlugs(requested: string[]) {
-    const slugs = [...new Set(requested)];
+  async getManyBySlugs(slugList: string[]) {
+    const slugs = [...new Set(slugList)];
     const cards = await getOrSetCache(`products:${[...slugs].sort().join(",")}`, CACHE_SECONDS, async () => {
       const rows = await prisma.product.findMany({
         where: { slug: { in: slugs }, isActive: true, category: ACTIVE_CATEGORY },
@@ -52,23 +51,23 @@ export const productService = {
       });
       return rows.map(productCard);
     });
-    const bySlug = new Map(cards.map((card) => [card.slug, card]));
-    return slugs.map((slug) => bySlug.get(slug)).filter((card) => card !== undefined);
+    const cardBySlug = new Map(cards.map((card) => [card.slug, card]));
+    return slugs.map((slug) => cardBySlug.get(slug)).filter((card) => card !== undefined);
   },
 
   // Usi category ke 8 aur products.
   async getRelated(slug: string) {
     const related = await getOrSetCache(`related:${slug}`, CACHE_SECONDS, async () => {
-      const row = await prisma.product.findFirst({
+      const product = await prisma.product.findFirst({
         where: { slug, isActive: true, category: ACTIVE_CATEGORY },
         select: { id: true, categoryId: true },
       });
-      if (!row) return null;
+      if (!product) return null;
 
-      const related = await prisma.product.findMany({
+      const sameCategory = await prisma.product.findMany({
         where: {
-          id: { not: row.id },
-          categoryId: row.categoryId,
+          id: { not: product.id },
+          categoryId: product.categoryId,
           isActive: true,
           category: ACTIVE_CATEGORY,
         },
@@ -76,7 +75,7 @@ export const productService = {
         orderBy: { createdAt: "desc" },
         take: 8,
       });
-      return related.map(productCard);
+      return sameCategory.map(productCard);
     });
 
     if (!related) throw new AppError("Product not found", 404);

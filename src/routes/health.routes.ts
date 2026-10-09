@@ -5,12 +5,11 @@ import { rateLimiter } from "../middleware/rateLimiter";
 
 const router = Router();
 
-// Server zinda hai?
 router.get("/", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-// DB aur Redis dono chal rahe hain? (limit ke saath, taaki koi DB pool na bhar de)
+// DB aur Redis dono chal rahe hain ya nahi (minute me 60 baar tak).
 const readyLimiter = rateLimiter({ name: "health", seconds: 60, maxRequests: 60, allowIfRedisDown: true });
 
 router.get("/ready", readyLimiter, async (_req, res) => {

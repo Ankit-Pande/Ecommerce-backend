@@ -3,7 +3,6 @@ import { randomUUID } from "crypto";
 import { PrismaClient } from "@prisma/client";
 import { finalPrice } from "../src/utils/price";
 
-// Seed pehle poora DB saaf karta hai — live DB par galti se chala to saara asli data ud jaata.
 if (process.env.NODE_ENV !== "development") {
   console.error("Seed sirf NODE_ENV=development me chalta hai (ye poora DB saaf karta hai).");
   process.exit(1);
@@ -16,7 +15,6 @@ function imageUrl(slug: string, n: number): string {
   return `https://picsum.photos/seed/${slug}-${n}/600/600`;
 }
 
-// Fixed seed wala random, taaki har run par bilkul wahi data bane.
 let seedState = 20260920;
 function random(): number {
   seedState = (seedState + 0x6d2b79f5) | 0;
@@ -39,7 +37,6 @@ const slugify = (text: string) =>
 const daysFromNow = (days: number) => new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-// Catalog: price rupee me, boys = Men + Kids, girls = Women + Kids, colors [] = rang nahi (kitaab, masala).
 type Child = {
   name: string;
   item: string; // product ke naam me jo shabd aayega
@@ -211,7 +208,6 @@ const CATALOG: { name: string; children: Child[] }[] = [
   },
 ];
 
-// Brand ke naam banaye hue hain — asli trademark portfolio project me nahi daalte.
 const BRANDS = [
   "Voltro", "Nexora", "Urbanite", "Kestrel", "Maruvi", "Zentra", "Auralis", "Nordfell",
   "Trikon", "Bluewick", "Sahara Mills", "Ironpeak", "Lumora", "Cascade", "Vireo",
@@ -220,7 +216,6 @@ const BRANDS = [
   "Monsoon Tales", "Swadesh Foods", "Lotus Living", "Rangrez", "Chhota Bheem Toys",
 ] as const;
 
-// DB me colour Title Case me rehta hai — catalog ka filter isi par chalta hai.
 const COLORS = [
   "Black", "White", "Navy Blue", "Red", "Grey", "Beige", "Olive Green",
   "Maroon", "Mustard", "Sky Blue", "Pink", "Brown", "Silver", "Purple", "Yellow",
@@ -272,7 +267,6 @@ const TOTAL_PRODUCTS = 8000;
 const TOTAL_USERS = 300;
 const TOTAL_ORDERS = 4000;
 const BATCH = 1000;
-// Wahi number jo .env me hai — login par auth.service bhi isi ko super admin banati hai.
 const SUPER_ADMIN_PHONE = process.env.SUPER_ADMIN_PHONE ?? "9876543210";
 
 // Purana data hatao (FK ke kram me: pehle bachche, phir maa-baap).
@@ -305,7 +299,6 @@ async function main() {
 
   const parentRows = [];
   const childRows = [];
-  // Product banate waqt kaam aayega: har subcategory ka id + uska dhancha.
   const subCategories: { id: string; child: Child }[] = [];
 
   for (const parent of CATALOG) {
@@ -344,7 +337,6 @@ async function main() {
   await prisma.brand.createMany({ data: brandRows });
   console.log(`Brand: ${brandRows.length}`);
 
-  // Har subcategory me barabar products, bacha hua pehli subcategory me.
   const perCategory = Math.floor(TOTAL_PRODUCTS / subCategories.length);
   const usedSlugs = new Set<string>();
   const products = [];
@@ -363,20 +355,16 @@ async function main() {
 
       const name = `${brand.name} ${model} ${series} ${child.item} ${variant}`;
       let slug = slugify(name);
-      // Naam kabhi-kabhi repeat ho jaata hai — slug unique hona zaroori hai.
       if (usedSlugs.has(slug)) slug = `${slug}-${products.length}`;
       usedSlugs.add(slug);
 
       const rupees = between(child.price[0], child.price[1]);
-      // ...99 par khatam hone wale daam asli lagte hain.
       const pricePaise = (Math.floor(rupees / 100) * 100 + 99) * 100;
 
-      // 45% products par discount. Unme se kuch par deadline bhi.
       const discountPercent = chance(45) ? between(5, 60) : 0;
       const offerEndsAt = discountPercent > 0 && chance(35) ? daysFromNow(between(2, 45)) : null;
       const sellPaise = finalPrice(pricePaise, discountPercent);
 
-      // Teeno stock status dikhen: out of stock, kam bacha, aur normal.
       const stock = chance(6) ? 0 : chance(12) ? between(1, 5) : between(10, 250);
 
       products.push({
@@ -459,14 +447,10 @@ async function main() {
     }
   }
 
-  // Har status ka order banao, taki admin panel aur "my orders" dono bharey dikhen.
   const orders = [];
   const orderItems = [];
-  // Review sirf DELIVERED order wale customer de sakta hai — wahi jodi yahan yaad rakhte hain.
   const deliveredPairs: { userId: string; productId: string }[] = [];
   const liveProducts = products.filter((p) => p.isActive);
-  // Har store me kuch products zyada bikte hain. Isi wajah se unpar reviews bhi zyada
-  // aati hain aur baaki par kam — bilkul waise jaise asli catalog me hota hai.
   const popular = liveProducts.slice(0, 400);
 
   for (let i = 0; i < TOTAL_ORDERS; i++) {
@@ -476,10 +460,8 @@ async function main() {
 
     const paymentMethod = chance(55) ? ("ONLINE" as const) : ("COD" as const);
     const picked = pick(["DELIVERED", "DELIVERED", "DELIVERED", "SHIPPED", "CONFIRMED", "PENDING", "CANCELLED"] as const);
-    // COD order bante hi CONFIRMED hota hai — PENDING sirf unpaid online order.
     const status = paymentMethod === "COD" && picked === "PENDING" ? "CONFIRMED" : picked;
 
-    // COD par paisa delivery pe milta hai; online par pay hone ke baad hi COMPLETED.
     const paymentStatus =
       paymentMethod === "COD"
         ? status === "DELIVERED"
@@ -502,7 +484,6 @@ async function main() {
       chosen.add(product.id);
 
       const quantity = between(1, 3);
-      // PENDING order ka stock ruka hua hai — deadline par releaseExpiredOrders() use wapas jodega.
       if (status === "PENDING") {
         if (product.stock < quantity) continue;
         product.stock -= quantity;
@@ -549,7 +530,6 @@ async function main() {
     });
   }
 
-  // Sirf delivered wali jodi se, aur ek user ek product par ek hi baar.
   const reviews = [];
   const reviewed = new Set<string>();
   const ratingByProduct = new Map<string, { sum: number; count: number }>();
@@ -557,11 +537,9 @@ async function main() {
   for (const pair of deliveredPairs) {
     const key = `${pair.productId}:${pair.userId}`;
     if (reviewed.has(key)) continue;
-    // Har khareedar review nahi likhta.
     if (!chance(65)) continue;
     reviewed.add(key);
 
-    // Zyadatar log 4-5 dete hain, kuch kam.
     const rating = chance(70) ? between(4, 5) : between(2, 3);
     const createdAt = daysAgo(between(1, 60));
 
@@ -579,8 +557,6 @@ async function main() {
     ratingByProduct.set(pair.productId, { sum: current.sum + rating, count: current.count + 1 });
   }
 
-  // Rating product row par likhi jaati hai (har card par AVG() na chale).
-  // Isliye product insert karne se PEHLE asli reviews se ginti bhar dete hain.
   for (const product of products) {
     const found = ratingByProduct.get(product.id);
     if (!found) continue;

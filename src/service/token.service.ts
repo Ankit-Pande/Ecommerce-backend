@@ -5,18 +5,17 @@ import { redis } from "../config/redis";
 import { AppError } from "../utils/appError";
 import { REFRESH_TTL_DAYS, signAccessToken, signRefreshToken, verifyRefreshToken } from "../utils/token";
 
-// Do tab ek saath refresh karein to 60 sec tak purana token bhi chale.
-const ROTATION_GRACE_MS = 60 * 1000;
+const OLD_TOKEN_GRACE_MS = 60 * 1000;
 const SESSION_CACHE_SEC = 60;
 
 const sessionKey = (sessionId: string) => `session:${sessionId}`;
-const refreshExpiry = () => new Date(Date.now() + REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000);
+const newExpiryDate = () => new Date(Date.now() + REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000);
 
-// Access + refresh token dono banao.
-function tokenPair(userId: string, sessionId: string, jti: string) {
+// Access aur refresh token dono banao (tokenId har refresh token ki alag pehchaan hai).
+function makeTokens(userId: string, sessionId: string, tokenId: string) {
   return {
     accessToken: signAccessToken({ userId, sessionId }),
-    refreshToken: signRefreshToken({ userId, sessionId, jti }),
+    refreshToken: signRefreshToken({ userId, sessionId, jti: tokenId }),
   };
 }
 
@@ -24,9 +23,9 @@ export const tokenService = {
   // Login par nayi session (har device ki alag).
   async createSession(userId: string) {
     const session = await prisma.session.create({
-      data: { userId, jti: randomUUID(), expiresAt: refreshExpiry() },
+      data: { userId, jti: randomUUID(), expiresAt: newExpiryDate() },
     });
-    return tokenPair(userId, session.id, session.jti);
+    return makeTokens(userId, session.id, session.jti);
   },
 
   // Session zinda hai to user ka role do, warna null (pehle Redis, phir DB).
@@ -49,15 +48,13 @@ export const tokenService = {
     if (session.user.isBlocked || session.user.isDeleted) return null;
 
     const role = session.user.role;
-    await redis
-      .set(sessionKey(sessionId), JSON.stringify({ userId, role }), "EX", SESSION_CACHE_SEC)
-      .catch(() => null);
+    await redis.set(sessionKey(sessionId), JSON.stringify({ userId, role }), "EX", SESSION_CACHE_SEC).catch(() => null);
     return role;
   },
 
-  // Naya token do; purana token dobara aaye (chori hua) to session khatam.
+  // Naya token do. 1 minute purana token bhi chalega (do tab ek saath refresh karein), usse purana dobara aaye to chori maan kar session khatam.
   async refreshSession(refreshToken: string) {
-    const { userId, sessionId, jti } = verifyRefreshToken(refreshToken);
+    const { userId, sessionId, jti: tokenId } = verifyRefreshToken(refreshToken);
 
     const result = await prisma.$transaction(async (db) => {
       await db.$queryRaw`SELECT "id" FROM "Session" WHERE "id" = ${sessionId} FOR UPDATE`;
@@ -69,20 +66,20 @@ export const tokenService = {
       if (!session || session.userId !== userId || session.expiresAt <= new Date()) return null;
       if (session.user.isBlocked || session.user.isDeleted) return null;
 
-      if (jti === session.jti) {
-        const nextJti = randomUUID();
+      if (tokenId === session.jti) {
+        const newTokenId = randomUUID();
         await db.session.update({
           where: { id: sessionId },
-          data: { jti: nextJti, previousJti: jti, rotatedAt: new Date(), expiresAt: refreshExpiry() },
+          data: { jti: newTokenId, previousJti: tokenId, rotatedAt: new Date(), expiresAt: newExpiryDate() },
         });
-        return tokenPair(userId, sessionId, nextJti);
+        return makeTokens(userId, sessionId, newTokenId);
       }
 
-      const withinGrace =
-        jti === session.previousJti &&
+      const isRecentOldToken =
+        tokenId === session.previousJti &&
         session.rotatedAt !== null &&
-        Date.now() - session.rotatedAt.getTime() < ROTATION_GRACE_MS;
-      if (withinGrace) return tokenPair(userId, sessionId, session.jti);
+        Date.now() - session.rotatedAt.getTime() < OLD_TOKEN_GRACE_MS;
+      if (isRecentOldToken) return makeTokens(userId, sessionId, session.jti);
 
       await db.session.delete({ where: { id: sessionId } });
       return null;
@@ -97,18 +94,18 @@ export const tokenService = {
 
   // Is device se logout (session DB aur Redis dono se hatao).
   async logout(refreshToken: string) {
-    let payload;
+    let token;
     try {
-      payload = verifyRefreshToken(refreshToken);
+      token = verifyRefreshToken(refreshToken);
     } catch {
       return;
     }
-    await prisma.session.deleteMany({ where: { id: payload.sessionId, userId: payload.userId } });
-    await redis.del(sessionKey(payload.sessionId)).catch(() => null);
+    await prisma.session.deleteMany({ where: { id: token.sessionId, userId: token.userId } });
+    await redis.del(sessionKey(token.sessionId)).catch(() => null);
   },
 
   // User ke saare device se logout (block, role change, delete par).
-  async revokeAllSessions(userId: string) {
+  async logoutAllDevices(userId: string) {
     const sessions = await prisma.session.findMany({ where: { userId }, select: { id: true } });
     if (sessions.length === 0) return;
     await prisma.session.deleteMany({ where: { userId } });

@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../config/db";
 import { CACHE_SECONDS, getOrSetCache } from "../config/cache";
-import { paginate } from "../utils/paginate";
+import { orderByIds, pageQuery, paginate } from "../utils/paginate";
 import { ACTIVE_CATEGORY, CARD_SELECT, productCard } from "../utils/price";
 
 type CatalogQuery = {
@@ -22,8 +22,7 @@ type CatalogQuery = {
   limit: number;
 };
 
-// Sort ke tarike (barabar hone par id se, taaki agle page par product dobara na aaye).
-const SORTS: Record<CatalogQuery["sort"], Prisma.ProductOrderByWithRelationInput[]> = {
+const SORT_ORDER: Record<CatalogQuery["sort"], Prisma.ProductOrderByWithRelationInput[]> = {
   latest: [{ createdAt: "desc" }, { id: "desc" }],
   price_asc: [{ sellPaise: "asc" }, { id: "asc" }],
   price_desc: [{ sellPaise: "desc" }, { id: "desc" }],
@@ -31,16 +30,15 @@ const SORTS: Record<CatalogQuery["sort"], Prisma.ProductOrderByWithRelationInput
   rating: [{ ratingAverage: "desc" }, { id: "desc" }],
 };
 
-// Search text me price pehchano: "under 2000", "20k tak", "500 rupee me", "5000 se 20000", "above 1 lakh".
-const AMOUNT = String.raw`(\d[\d,]*(?:\.\d+)?)\s*(k|hazar|lakh|lac)?\b`;
-const RUPEE = String.raw`(?:rs\.?|rupees?|rupaye|rupay)?`;
-const RANGE = new RegExp(String.raw`${AMOUNT}\s*(?:-|to|se)\s*${AMOUNT}`, "i");
-const BELOW = new RegExp(
-  String.raw`(?:under|below|upto|up to|less than|max)\s*(?:rs\.?|₹)?\s*${AMOUNT}|${AMOUNT}\s*${RUPEE}\s*(?:tak|ke andar|ke ander|andar|ander|ke neeche|se kam|me|mein)\b`,
+const PRICE_NUMBER = String.raw`(\d[\d,]*(?:\.\d+)?)\s*(k|hazar|lakh|lac)?\b`;
+const RUPEE_WORD = String.raw`(?:rs\.?|rupees?|rupaye|rupay)?`;
+const PRICE_RANGE = new RegExp(String.raw`${PRICE_NUMBER}\s*(?:-|to|se)\s*${PRICE_NUMBER}`, "i");
+const PRICE_BELOW = new RegExp(
+  String.raw`(?:under|below|upto|up to|less than|max)\s*(?:rs\.?|₹)?\s*${PRICE_NUMBER}|${PRICE_NUMBER}\s*${RUPEE_WORD}\s*(?:tak|ke andar|ke ander|andar|ander|ke neeche|se kam|me|mein)\b`,
   "i",
 );
-const ABOVE = new RegExp(
-  String.raw`(?:above|over|more than|min)\s*(?:rs\.?|₹)?\s*${AMOUNT}|${AMOUNT}\s*${RUPEE}\s*(?:se upar|se zyada|ke upar)`,
+const PRICE_ABOVE = new RegExp(
+  String.raw`(?:above|over|more than|min)\s*(?:rs\.?|₹)?\s*${PRICE_NUMBER}|${PRICE_NUMBER}\s*${RUPEE_WORD}\s*(?:se upar|se zyada|ke upar)`,
   "i",
 );
 
@@ -55,51 +53,53 @@ function toRupees(digits: string, unit?: string): number {
   return value * unitValue;
 }
 
-// Search text se budget nikalo aur bacha hua text search ke liye do.
-export function readBudget(q: string): { text: string; minPrice?: number; maxPrice?: number } {
-  const clean = (text: string) =>
+// Search text se price nikalo ("under 2000", "500 me", "5000 se 20000"); ₹100 se kam ko price mat maano. Bacha text search ke liye do.
+export function readBudget(search: string): { text: string; minPrice?: number; maxPrice?: number } {
+  const tidy = (text: string) =>
     text
       .replace(/₹|\brs\b\.?/gi, " ")
       .replace(/\s+/g, " ")
       .trim();
-  const range = q.match(RANGE);
-  const below = q.match(BELOW);
-  const above = q.match(ABOVE);
+  const range = search.match(PRICE_RANGE);
+  const below = search.match(PRICE_BELOW);
+  const above = search.match(PRICE_ABOVE);
 
   let budget: { minPrice?: number; maxPrice?: number } = {};
-  let matched = "";
+  let priceText = "";
   if (range) {
     const low = toRupees(range[1], range[2] ?? range[4]);
     const high = toRupees(range[3], range[4]);
     budget = { minPrice: Math.min(low, high), maxPrice: Math.max(low, high) };
-    matched = range[0];
+    priceText = range[0];
   } else if (below) {
     budget = { maxPrice: toRupees(below[1] ?? below[3], below[2] ?? below[4]) };
-    matched = below[0];
+    priceText = below[0];
   } else if (above) {
     budget = { minPrice: toRupees(above[1] ?? above[3], above[2] ?? above[4]) };
-    matched = above[0];
+    priceText = above[0];
   }
 
-  // ₹100 se kam ko price mat maano ("32 to 43 inch tv" budget nahi hai).
-  if (!matched || (budget.maxPrice ?? budget.minPrice ?? 0) < 100) return { text: clean(q) };
-  return { text: clean(q.replace(matched, " ")), ...budget };
+  if (!priceText || (budget.maxPrice ?? budget.minPrice ?? 0) < 100) return { text: tidy(search) };
+  return { text: tidy(search.replace(priceText, " ")), ...budget };
 }
 
 // Har shabd naam, colour, brand ya category me kahin mile; brand aur category pehle dhoondho taaki search tez ho.
-async function searchWhere(words: string[]): Promise<Prisma.ProductWhereInput> {
+async function matchEveryWord(words: string[]): Promise<Prisma.ProductWhereInput> {
   const conditions = await Promise.all(
     words.map(async (word) => {
-      const has = { contains: word, mode: "insensitive" as const };
+      const contains = { contains: word, mode: "insensitive" as const };
       const [brands, categories] = await Promise.all([
-        prisma.brand.findMany({ where: { name: has, isActive: true }, select: { id: true } }),
-        prisma.category.findMany({ where: { OR: [{ name: has }, { parent: { name: has } }] }, select: { id: true } }),
+        prisma.brand.findMany({ where: { name: contains, isActive: true }, select: { id: true } }),
+        prisma.category.findMany({
+          where: { OR: [{ name: contains }, { parent: { name: contains } }] },
+          select: { id: true },
+        }),
       ]);
       return {
         OR: [
-          { name: has },
-          { description: has },
-          { color: has },
+          { name: contains },
+          { description: contains },
+          { color: contains },
           { brandId: { in: brands.map((b) => b.id) } },
           { categoryId: { in: categories.map((c) => c.id) } },
         ],
@@ -118,14 +118,13 @@ function searchWords(text: string): string[] {
 }
 
 // Category, subcategory aur section (trending/featured) ke filter.
-function baseFilters(query: {
+function commonFilters(query: {
   category?: string;
   subcategory?: string;
   section?: string;
 }): Prisma.ProductWhereInput[] {
   const filters: Prisma.ProductWhereInput[] = [{ isActive: true, category: ACTIVE_CATEGORY }];
   if (query.subcategory) filters.push({ category: { slug: query.subcategory, parentId: { not: null } } });
-  // Parent category chuni to uski subcategories ke products bhi.
   if (query.category) {
     filters.push({
       OR: [{ category: { slug: query.category } }, { category: { parent: { slug: query.category } } }],
@@ -136,11 +135,10 @@ function baseFilters(query: {
   return filters;
 }
 
-// Galat spelling wali search ("samsng"); 2 sec se zyada chale to Postgres khud rok de.
-async function typoMatchIds(text: string): Promise<string[]> {
+// Galat spelling wali search ("samsng"): naam, brand aur category me milte-julte products; 2 second se zyada lage to ruk jaye.
+async function similarSpellingIds(text: string): Promise<string[]> {
   const [, rows] = await prisma.$transaction([
     prisma.$executeRaw`SET LOCAL statement_timeout = '2s'`,
-    // Naam, brand aur category teeno alag se dhoondho, ek saath likhne par search dheemi ho jaati hai.
     prisma.$queryRaw<{ id: string }[]>`
       SELECT p."id", similarity(p."name", ${text}) AS score FROM "Product" p
       WHERE p."isActive" = true AND p."name" % ${text}
@@ -157,11 +155,10 @@ async function typoMatchIds(text: string): Promise<string[]> {
 }
 
 export const catalogService = {
-  // Product list: search + filter + sort + pages (5 min cache).
+  // Product list: search, filter, sort aur pages; kuch na mile to galat spelling wali search (5 minute cache).
   async list(query: CatalogQuery) {
     const budget = readBudget(query.q ?? "");
     const words = searchWords(budget.text);
-    // Text hai par kaam ka shabd nahi (jaise "a under 2000"): khaali jawab do, poora catalog nahi.
     if (budget.text.length > 0 && words.length === 0) return { items: [], nextCursor: null };
 
     const minPaise = query.minPricePaise ?? toPaise(budget.minPrice);
@@ -171,12 +168,11 @@ export const catalogService = {
       .digest("hex");
 
     return getOrSetCache(`catalog:${cacheKey}`, CACHE_SECONDS, async () => {
-      const filters = baseFilters(query);
+      const filters = commonFilters(query);
       if (query.brand) filters.push({ brand: { slug: { in: query.brand }, isActive: true } });
       if (query.color) filters.push({ color: { in: query.color } });
       if (query.gender) filters.push({ gender: { in: query.gender } });
       if (query.ageGroup) filters.push({ ageGroup: { in: query.ageGroup } });
-      // Price filter discount ke baad wale price par.
       if (minPaise !== undefined) filters.push({ sellPaise: { gte: minPaise } });
       if (maxPaise !== undefined) filters.push({ sellPaise: { lte: maxPaise } });
       if (query.discount) {
@@ -187,25 +183,20 @@ export const catalogService = {
       }
 
       const rows = await prisma.product.findMany({
-        where: { AND: words.length > 0 ? [...filters, await searchWhere(words)] : filters },
+        where: { AND: words.length > 0 ? [...filters, await matchEveryWord(words)] : filters },
         select: CARD_SELECT,
-        orderBy: SORTS[query.sort],
-        take: query.limit + 1,
-        ...(query.cursor && { cursor: { id: query.cursor }, skip: 1 }),
+        orderBy: SORT_ORDER[query.sort],
+        ...pageQuery(query.cursor, query.limit),
       });
 
-      // Kuch nahi mila to galat spelling wali search try karo.
       if (words.length > 0 && rows.length === 0 && !query.cursor) {
-        const ids = await typoMatchIds(words.join(" "));
+        const ids = await similarSpellingIds(words.join(" "));
         if (ids.length === 0) return { items: [], nextCursor: null };
-        const typoRows = await prisma.product.findMany({
+        const similarRows = await prisma.product.findMany({
           where: { AND: [...filters, { id: { in: ids } }] },
           select: CARD_SELECT,
         });
-        // Sabse milta-julta product upar rahe.
-        const position = new Map(ids.map((id, index) => [id, index]));
-        typoRows.sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0));
-        return { items: typoRows.slice(0, query.limit).map(productCard), nextCursor: null };
+        return { items: orderByIds(similarRows, ids).slice(0, query.limit).map(productCard), nextCursor: null };
       }
 
       const page = paginate(rows, query.limit);
@@ -217,7 +208,7 @@ export const catalogService = {
   async filters(query: { category?: string; subcategory?: string }) {
     const cacheKey = `filters:${query.category ?? ""}:${query.subcategory ?? ""}`;
     return getOrSetCache(cacheKey, CACHE_SECONDS, async () => {
-      const where: Prisma.ProductWhereInput = { AND: baseFilters(query) };
+      const where: Prisma.ProductWhereInput = { AND: commonFilters(query) };
       const [brands, colors] = await Promise.all([
         prisma.brand.findMany({
           where: { isActive: true, products: { some: where } },

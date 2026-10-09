@@ -1,13 +1,10 @@
 import "dotenv/config";
 import { z } from "zod";
 
-// NODE_ENV na diya ho to live (production) maano, taaki live par galti se dev mode na chale.
 const isProduction = (process.env.NODE_ENV ?? "production") === "production";
 
-// Live par zaroori, laptop par khaali chal jayega.
 const requiredOnLive = isProduction ? z.string().min(1) : z.string().optional();
 
-// .env ki saari values yahin check hoti hain; galat ho to app start hi nahi hogi.
 const schema = z
   .object({
     NODE_ENV: z.enum(["development", "production"]).default("production"),
@@ -49,7 +46,6 @@ const schema = z
     PAYMENT_WINDOW_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
     MAX_PENDING_ORDERS: z.coerce.number().int().min(1).max(10).default(2),
 
-    // Key na ho to AI sirf naam wali search karega (meaning wali search aur LLM band).
     GEMINI_API_KEY: z.string().optional(),
     GEMINI_CHAT_MODEL: z.string().default("gemini-2.5-flash"),
     GEMINI_EMBED_MODEL: z.string().default("gemini-embedding-001"),

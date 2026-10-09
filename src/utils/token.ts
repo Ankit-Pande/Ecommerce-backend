@@ -4,13 +4,11 @@ import { AppError } from "./appError";
 
 export const REFRESH_TTL_DAYS = 15;
 
-// Access token ke andar kya hai (role nahi rakhte, role har baar session se aata hai).
 interface AccessPayload {
   userId: string;
   sessionId: string;
 }
 
-// Refresh token ke andar kya hai (jti = har token ki alag pehchaan).
 interface RefreshPayload {
   userId: string;
   sessionId: string;

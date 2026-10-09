@@ -2,7 +2,6 @@ import Redis from "ioredis";
 import { env } from "./env";
 import { logger } from "./winston";
 
-// Redis se connection. Redis band ho to command 1 second me fail ho jaye, request atke nahi.
 export const redis = new Redis(env.REDIS_URL, {
   maxRetriesPerRequest: 2,
   retryStrategy: (times) => Math.min(times * 200, 2000),
@@ -20,7 +19,6 @@ export async function disconnectRedis(): Promise<void> {
   await redis.quit().catch((error) => logger.error("Redis disconnect failed", { error }));
 }
 
-// Ginti +1 karo aur pehli baar par time limit lagao (dono ek saath, taaki ginti kabhi atke nahi).
 const COUNT_SCRIPT = `
 local count = redis.call('INCR', KEYS[1])
 if redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end

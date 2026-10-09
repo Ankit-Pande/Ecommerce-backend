@@ -17,7 +17,6 @@ import {
 
 const router = Router();
 
-// "/batch" pehle — warna ":slug" use slug samajh leta.
 router.get("/batch", validate(batchProductSchema), getProductsBySlugs);
 
 router.get("/:slug", validate(productSlugSchema), getProduct);

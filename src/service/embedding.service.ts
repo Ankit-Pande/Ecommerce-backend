@@ -7,10 +7,9 @@ import { embedTexts, geminiReady } from "../integration/gemini";
 
 const BATCH_SIZE = 100;
 const QUERY_VECTOR_SECONDS = 7 * 24 * 3600;
-// Itna door ka product sawal se mel nahi khata, use mat dikhao.
 const MAX_DISTANCE = 0.45;
 
-type SemanticFilters = {
+type SearchFilters = {
   gender?: string[];
   ageGroup?: string[];
   minPaise?: number;
@@ -89,7 +88,7 @@ export const embeddingService = {
   },
 
   // Meaning se milte chalu products ki ids, sabse paas wale pehle.
-  async searchIds(text: string, filters: SemanticFilters, limit: number): Promise<string[]> {
+  async searchIds(text: string, filters: SearchFilters, limit: number): Promise<string[]> {
     if (!geminiReady) return [];
     const vector = await queryVector(text);
 
@@ -107,7 +106,6 @@ export const embeddingService = {
     if (filters.discount) where.push(Prisma.sql`p."discountPercent" > 0`);
     if (filters.trending) where.push(Prisma.sql`p."isTrending" = true`);
 
-    // Filter (gender, price) lagne par bhi poore result milein.
     const [, rows] = await prisma.$transaction([
       prisma.$executeRaw`SET LOCAL hnsw.iterative_scan = strict_order`,
       prisma.$queryRaw<{ id: string }[]>`

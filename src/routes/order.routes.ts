@@ -1,23 +1,12 @@
 import { Router } from "express";
-import {
-  cancelOrder,
-  checkout,
-  getOrder,
-  listOrders,
-  retryPayment,
-} from "../controller/order.controller";
+import { cancelOrder, checkout, getOrder, listOrders, retryPayment } from "../controller/order.controller";
 import { authCheck } from "../middleware/authCheck";
 import { rateLimiter } from "../middleware/rateLimiter";
 import { validate } from "../middleware/validate";
-import {
-  checkoutSchema,
-  listOrderSchema,
-  orderIdSchema,
-} from "../validation/order.validation";
+import { checkoutSchema, listOrderSchema, orderIdSchema } from "../validation/order.validation";
 
 const router = Router();
 
-// Sab order routes login wale (webhook app.ts me alag hai).
 router.use(authCheck);
 
 router.post(

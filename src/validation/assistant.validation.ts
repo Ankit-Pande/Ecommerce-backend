@@ -16,7 +16,6 @@ const message = z
   })
   .strict();
 
-// Sirf aakhri 10 message LLM tak; aakhri message user ka sawal (2 se 500 akshar).
 export const chatSchema = z.object({
   body: z
     .object({

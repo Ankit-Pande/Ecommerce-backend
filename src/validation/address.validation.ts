@@ -6,7 +6,6 @@ const addressBody = z
     fullName: z.string().trim().min(2).max(80),
     phone,
     line1: z.string().trim().min(3).max(150),
-    // null bhejo to line2 hat jaati hai.
     line2: z.string().trim().max(150).nullable().optional(),
     city: z.string().trim().min(2).max(60),
     state: z.string().trim().min(2).max(60),

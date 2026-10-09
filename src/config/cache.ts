@@ -1,6 +1,5 @@
 import { redis } from "./redis";
 
-// Cache kitni der rahe (5 minute).
 export const CACHE_SECONDS = 300;
 
 const VERSION_KEY = "storefront:version";
@@ -18,7 +17,6 @@ export async function getOrSetCache<T>(name: string, seconds: number, loadFromDb
   const saved = await redis.get(key).catch(() => null);
   if (saved) return JSON.parse(saved) as T;
 
-  // Ek saath bahut log aayein to sirf pehla DB jaaye, baaki thoda ruk kar Redis me dekhein.
   const isFirst = await redis.set(`${key}:lock`, "1", "EX", LOCK_SECONDS, "NX").catch(() => null);
   if (!isFirst) {
     await sleep(WAIT_MS);

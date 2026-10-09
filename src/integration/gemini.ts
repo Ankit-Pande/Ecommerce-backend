@@ -4,10 +4,8 @@ import { AppError } from "../utils/appError";
 const BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const EMBED_SIZE = 768;
 
-// .env me key ho tabhi AI ke Gemini wale kaam chalein.
 export const geminiReady = Boolean(env.GEMINI_API_KEY);
 
-// Gemini ke message ke hisse: text, function call ya function ka jawab.
 export type GeminiPart = {
   text?: string;
   functionCall?: { name: string; args?: Record<string, unknown> };

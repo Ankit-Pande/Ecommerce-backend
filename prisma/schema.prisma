@@ -2,7 +2,7 @@ datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
   directUrl  = env("DIRECT_URL")
-  // pg_trgm: typo wali search aur ILIKE index; vector: AI ki meaning wali search.
+  // pg_trgm: galat spelling wali search; vector: AI ki meaning wali search.
   extensions = [pg_trgm, vector]
 }
 
@@ -25,7 +25,7 @@ enum OrderStatus {
   CANCELLED
 }
 
-// REFUNDED: admin ne Razorpay dashboard se paisa lauta diya.
+// REFUNDED: admin ne Razorpay se paisa lauta diya.
 enum PaymentStatus {
   PENDING
   COMPLETED
@@ -37,7 +37,7 @@ enum PaymentMethod {
   ONLINE
 }
 
-// Order kisne cancel kiya: customer, admin, ya system (payment time nikal gaya / galat payment).
+// Order kisne cancel kiya: customer, admin ya system (payment time par nahi aaya).
 enum CancelledBy {
   USER
   ADMIN
@@ -64,14 +64,13 @@ model User {
   reviews   Review[]
 }
 
-// Ek row = ek device ka login; refresh token ka jti yahin (Redis sirf cache).
+// Ek row = ek device ka login.
 model Session {
   id          String    @id @default(uuid())
   userId      String
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   jti         String    @unique
-  // Rotate se pehle wala jti — do tab ek saath refresh karein to dusre ko 60s tak
-  // wahi nayi session mil jaati hai, logout nahi hota.
+  // Pichhla token id: do tab ek saath refresh karein to 1 minute tak ye bhi chalega.
   previousJti String?
   rotatedAt   DateTime?
   expiresAt   DateTime
@@ -144,8 +143,7 @@ model Product {
   slug        String @unique
   description String
 
-  // Paise me (Rs.499 = 49900). sellPaise = discount ke baad ka price —
-  // admin.service likhti hai, catalog ka price filter/sort isi pe chalta hai.
+  // Paise me (Rs.499 = 49900). sellPaise = discount ke baad ka price, filter aur sort isi par.
   pricePaise      Int
   discountPercent Int       @default(0)
   sellPaise       Int
@@ -166,12 +164,12 @@ model Product {
   isTrending Boolean @default(false)
   isFeatured Boolean @default(false)
 
-  // Average har card pe AVG() se na nikle, isliye review.service ye teeno update karti hai.
+  // Rating ka hisaab yahin rakhte hain, taaki har baar saare reviews na ginne padein.
   ratingSum     Int   @default(0)
   ratingCount   Int   @default(0)
   ratingAverage Float @default(0)
 
-  // AI search ka meaning (Gemini embedding). HNSW index migration me hai — naye migrate dev me "DROP INDEX Product_embedding_idx" aaye to hata dena.
+  // AI search ka data (Gemini embedding). Naye "migrate dev" me "DROP INDEX Product_embedding_idx" aaye to wo line hata dena.
   embedding Unsupported("halfvec(768)")?
 
   createdAt DateTime @default(now())
@@ -190,7 +188,6 @@ model Product {
   @@index([isActive, isTrending])
   @@index([isActive, isFeatured])
   @@index([discountPercent, offerEndsAt])
-  // Search ILIKE '%text%' in index ke bina poori table scan karti hai.
   @@index([name(ops: raw("gin_trgm_ops"))], type: Gin)
   @@index([description(ops: raw("gin_trgm_ops"))], type: Gin)
   @@index([color(ops: raw("gin_trgm_ops"))], type: Gin)
@@ -221,7 +218,7 @@ model CartItem {
   @@unique([cartId, productId])
 }
 
-// Stock order banne par kat-ta hai aur sirf CANCELLED par wapas aata hai.
+// Stock order banne par katta hai aur sirf cancel hone par wapas aata hai.
 model Order {
   id             String @id @default(uuid())
   userId         String
@@ -231,7 +228,7 @@ model Order {
   addressId String?
   address   Address? @relation(fields: [addressId], references: [id], onDelete: SetNull)
 
-  // Delivery ka snapshot — address baad me badle to order ka pata na badle.
+  // Delivery ka pata order me copy hota hai, taaki address badle to order ka pata na badle.
   shipName    String
   shipPhone   String
   shipLine1   String
@@ -245,11 +242,11 @@ model Order {
   paymentStatus PaymentStatus @default(PENDING)
   paymentMethod PaymentMethod
 
-  // ONLINE order: is waqt tak payment na aaye to cancel + stock wapas.
+  // Online order: is time tak payment na aaye to order cancel aur stock wapas.
   paymentExpiresAt  DateTime?
   razorpayOrderId   String?      @unique
   razorpayPaymentId String?
-  // Payment aayi par order confirm nahi ho saka (late/galat amount) — admin dekhe.
+  // Payment aayi par order confirm nahi ho saka (late ya galat amount), admin dekhe.
   needsReview       Boolean      @default(false)
   cancelledBy       CancelledBy?
 
@@ -260,9 +257,7 @@ model Order {
 
   @@unique([userId, idempotencyKey])
   @@index([userId, createdAt])
-  // Address delete par Postgres yahan addressId NULL karta hai — index ke bina poori Order table scan.
   @@index([addressId])
-  // Admin list bina filter ke isi par sort hoti hai.
   @@index([createdAt])
   @@index([status, paymentExpiresAt])
   @@index([needsReview, createdAt])
@@ -275,7 +270,7 @@ model OrderItem {
   productId String
   product   Product @relation(fields: [productId], references: [id])
 
-  // Order ke waqt ka naam/photo/price.
+  // Order ke time ka naam, photo aur price.
   productName  String
   productImage String?
   pricePaise   Int
@@ -285,7 +280,7 @@ model OrderItem {
   @@index([productId])
 }
 
-// Razorpay ka event id — ek payment do baar process na ho.
+// Razorpay ke message ki id, taaki ek payment do baar na gine.
 model WebhookEvent {
   id        String   @id
   createdAt DateTime @default(now())

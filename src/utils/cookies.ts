@@ -5,7 +5,6 @@ import { REFRESH_TTL_DAYS } from "./token";
 const REFRESH_COOKIE = "refreshToken";
 const isProduction = env.NODE_ENV === "production";
 
-// Cookie ki settings: browser ka JavaScript ise padh nahi sakta, aur ye sirf /api/auth par jaati hai.
 const cookieOptions: CookieOptions = {
   httpOnly: true,
   secure: isProduction,

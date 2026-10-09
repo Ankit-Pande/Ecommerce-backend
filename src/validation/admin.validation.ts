@@ -1,17 +1,13 @@
 import { z } from "zod";
-import { AGE_GROUPS, GENDERS, idParams, orderStatus, page, queryBoolean, slug, uuid } from "./common";
+import { AGE_GROUPS, GENDERS, idParams, orderStatus, pageParams, queryBoolean, slug, uuid } from "./common";
 
-// Form ka "true"/"false" -> boolean (z.coerce.boolean "false" ko bhi true bana deta hai).
 const formBoolean = z.preprocess((v) => (v === "true" ? true : v === "false" ? false : v), z.boolean());
 
 // Form me khaali string bhejo = field hatao (null).
 const emptyToNull = (v: unknown) => (v === "" ? null : v);
 
 const clearableText = (max: number) =>
-  z.preprocess(
-    (v) => (typeof v === "string" && !v.trim() ? null : v),
-    z.string().trim().min(1).max(max).nullable(),
-  );
+  z.preprocess((v) => (typeof v === "string" && !v.trim() ? null : v), z.string().trim().min(1).max(max).nullable());
 
 // Fixed list wale field. Khaali bhejo to field hat jaata hai.
 const clearableEnum = <T extends readonly [string, ...string[]]>(values: T) =>
@@ -29,7 +25,6 @@ const productFields = {
   color: clearableText(30).optional(),
   gender: clearableEnum(GENDERS).optional(),
   ageGroup: clearableEnum(AGE_GROUPS).optional(),
-  // Offer ki deadline aage ki honi chahiye.
   offerEndsAt: z
     .preprocess(emptyToNull, z.coerce.date().nullable())
     .refine((date) => !date || date.getTime() > Date.now(), "offerEndsAt must be in the future")
@@ -38,7 +33,6 @@ const productFields = {
   isFeatured: formBoolean.optional(),
 };
 
-// Images file ke roop me aati hain (controller upload karta hai).
 export const createProductSchema = z.object({
   body: z.object(productFields).strict(),
 });
@@ -48,7 +42,6 @@ export const updateProductSchema = z.object({
   body: z.object(productFields).partial().extend({ isActive: formBoolean.optional() }).strict(),
 });
 
-// Bulk: max 50 product, images pehle /admin/uploads se URL banakar bhejo.
 export const bulkCreateProductSchema = z.object({
   body: z.object({
     products: z
@@ -61,7 +54,7 @@ export const bulkCreateProductSchema = z.object({
 export const adminListProductSchema = z.object({
   query: z.object({
     q: z.string().trim().max(100).optional(),
-    ...page(),
+    ...pageParams(),
   }),
 });
 
@@ -98,7 +91,6 @@ export const updateBrandSchema = z.object({
   body: z.object({ name: z.string().trim().min(2).max(80).optional(), isActive: z.boolean().optional() }).strict(),
 });
 
-// Site ka apna path ("/products?..") ya poora http(s) URL.
 const bannerLink = z
   .string()
   .refine(
@@ -126,7 +118,6 @@ export const updateBannerSchema = z.object({
     .strict(),
 });
 
-// categoryId na ho to poore store par. discountPercent 0 = sale khatam.
 export const saleSchema = z.object({
   body: z
     .object({
@@ -144,20 +135,19 @@ export const adminListOrderSchema = z.object({
   query: z.object({
     status: orderStatus.optional(),
     needsReview: queryBoolean.optional(),
-    ...page(),
+    ...pageParams(),
   }),
 });
 
 export const updateOrderStatusSchema = z.object({
   params: idParams,
-  // CONFIRMED sirf webhook/COD checkout se hota hai, admin se nahi.
   body: z.object({ status: z.enum(["SHIPPED", "DELIVERED", "CANCELLED"]) }).strict(),
 });
 
 export const adminListUserSchema = z.object({
   query: z.object({
     q: z.string().trim().max(20).optional(),
-    ...page(),
+    ...pageParams(),
   }),
 });
 
@@ -166,7 +156,6 @@ export const blockUserSchema = z.object({
   body: z.object({ isBlocked: z.boolean() }).strict(),
 });
 
-// SUPER_ADMIN yahan se nahi banta.
 export const setUserRoleSchema = z.object({
   params: idParams,
   body: z.object({ role: z.enum(["USER", "ADMIN"]) }).strict(),

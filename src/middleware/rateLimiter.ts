@@ -3,7 +3,6 @@ import { countInWindow } from "../config/redis";
 import { logger } from "../config/winston";
 import { AppError } from "../utils/appError";
 
-// name = limit ka naam, seconds me maxRequests tak hi request; Redis band ho to allowIfRedisDown tay kare.
 interface LimitOptions {
   name: string;
   seconds: number;
@@ -17,7 +16,6 @@ function visitorIp(ip: string): string {
   if (!ip.includes(":")) return ip;
   if (!ip.includes("::")) return ip.split(":").slice(0, 4).join(":");
 
-  // "::" ka matlab beech me zero wale hisse; unhe bhar kar pehle 4 hisse lo.
   const [start, end = ""] = ip.split("::");
   const startParts = start ? start.split(":") : [];
   const endParts = end ? end.split(":") : [];

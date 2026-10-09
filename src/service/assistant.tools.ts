@@ -15,7 +15,6 @@ type Tool = {
   declaration: GeminiTool;
   adminOnly?: boolean;
   schema: z.ZodTypeAny;
-  // Badlav wale kaam me pehle user se "haan" chahiye; yahi sawal usse puchha jaata hai.
   confirmText?: (user: ToolUser, args: any) => Promise<string>;
   run: (user: ToolUser, args: any) => Promise<ToolOutput>;
 };
@@ -25,7 +24,7 @@ const shortId = (id: string) => id.slice(0, 8).toUpperCase();
 const LOW_STOCK_AT = 5;
 
 // AI ko product ki chhoti jaankari do (id ke saath, taaki cart me daal sake).
-const brief = (card: Card) => ({
+const shortInfo = (card: Card) => ({
   id: card.id,
   name: card.name,
   priceRupees: rupees(card.finalPricePaise),
@@ -35,7 +34,7 @@ const brief = (card: Card) => ({
 });
 
 // Tool ke inputs ka Gemini wala format.
-const params = (properties: Record<string, unknown>, required: string[] = []) => ({
+const toolInputs = (properties: Record<string, unknown>, required: string[] = []) => ({
   type: "OBJECT",
   properties,
   required,
@@ -47,12 +46,12 @@ const TOOLS: Record<string, Tool> = {
       name: "search_products",
       description:
         "Search the store. Call once per product type (e.g. shoes, jeans, shirt separately). Query can include who it is for, budget and words like cheap/best/offer/trending.",
-      parameters: params({ query: { type: "STRING" } }, ["query"]),
+      parameters: toolInputs({ query: { type: "STRING" } }, ["query"]),
     },
     schema: z.object({ query: z.string().trim().min(2).max(120) }),
     async run(_user, args) {
       const { products } = await findProducts(readQuestion(args.query), 0);
-      return { data: products.map(brief), products };
+      return { data: products.map(shortInfo), products };
     },
   },
 
@@ -64,7 +63,7 @@ const TOOLS: Record<string, Tool> = {
       return {
         data: {
           totalRupees: rupees(cart.totalPaise),
-          items: cart.items.map((item) => ({ ...brief(item.product), quantity: item.quantity })),
+          items: cart.items.map((item) => ({ ...shortInfo(item.product), quantity: item.quantity })),
         },
       };
     },
@@ -74,7 +73,7 @@ const TOOLS: Record<string, Tool> = {
     declaration: {
       name: "add_to_cart",
       description: "Add a product (id from search_products) to the cart.",
-      parameters: params({ productId: { type: "STRING" }, quantity: { type: "INTEGER" } }, ["productId"]),
+      parameters: toolInputs({ productId: { type: "STRING" }, quantity: { type: "INTEGER" } }, ["productId"]),
     },
     schema: z.object({ productId: uuid, quantity: z.number().int().min(1).max(10).default(1) }),
     async run(user, args) {
@@ -87,7 +86,7 @@ const TOOLS: Record<string, Tool> = {
     declaration: {
       name: "remove_from_cart",
       description: "Remove a product (id from get_cart) from the cart.",
-      parameters: params({ productId: { type: "STRING" } }, ["productId"]),
+      parameters: toolInputs({ productId: { type: "STRING" } }, ["productId"]),
     },
     schema: z.object({ productId: uuid }),
     async run(user, args) {
@@ -100,7 +99,7 @@ const TOOLS: Record<string, Tool> = {
     declaration: {
       name: "list_orders",
       description: "User's latest 5 orders, newest first. cancelled=true gives only cancelled orders.",
-      parameters: params({ cancelled: { type: "BOOLEAN" } }),
+      parameters: toolInputs({ cancelled: { type: "BOOLEAN" } }),
     },
     schema: z.object({ cancelled: z.boolean().optional() }),
     async run(user, args) {
@@ -124,7 +123,7 @@ const TOOLS: Record<string, Tool> = {
     declaration: {
       name: "cancel_order",
       description: "Cancel one of the user's orders (orderId from list_orders). The user must confirm first.",
-      parameters: params({ orderId: { type: "STRING" } }, ["orderId"]),
+      parameters: toolInputs({ orderId: { type: "STRING" } }, ["orderId"]),
     },
     schema: z.object({ orderId: uuid }),
     async confirmText(user, args) {
@@ -142,7 +141,7 @@ const TOOLS: Record<string, Tool> = {
     declaration: {
       name: "admin_find_products",
       description: "Admin: find products by name with stock, active, trending, featured and offer details.",
-      parameters: params({ name: { type: "STRING" } }, ["name"]),
+      parameters: toolInputs({ name: { type: "STRING" } }, ["name"]),
     },
     schema: z.object({ name: z.string().trim().min(2).max(120) }),
     async run(_user, args) {
@@ -196,7 +195,7 @@ const TOOLS: Record<string, Tool> = {
       name: "admin_update_product",
       description:
         "Admin: change a product (id from admin_find_products): trending, featured, active (show/hide), stock, or endOffer=true to remove its discount. Admin must confirm first.",
-      parameters: params(
+      parameters: toolInputs(
         {
           productId: { type: "STRING" },
           isTrending: { type: "BOOLEAN" },
@@ -248,7 +247,7 @@ export function toolsFor(user: ToolUser): GeminiTool[] {
 }
 
 // Tool ka naam aur uske input check karo; galat ho to null.
-export function pickTool(user: ToolUser, name: string, rawArgs: unknown) {
+export function findTool(user: ToolUser, name: string, rawArgs: unknown) {
   const tool = TOOLS[name];
   if (!tool || (tool.adminOnly && !user.isAdmin)) return null;
   const args = tool.schema.safeParse(rawArgs ?? {});

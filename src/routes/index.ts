@@ -10,7 +10,6 @@ import { orderRoutes } from "./order.routes";
 import { productRoutes } from "./product.routes";
 import { userRoutes } from "./user.routes";
 
-// Saare /api routes (/health aur webhook app.ts me hain).
 const router = Router();
 
 router.use("/home", homeRoutes);

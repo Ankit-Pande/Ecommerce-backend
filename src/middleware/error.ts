@@ -11,12 +11,10 @@ export const errorHandler = (err: unknown, _req: Request, res: Response, next: N
 
   const send = (status: number, message: string) => res.status(status).json({ success: false, message });
 
-  // Galat ya bahut bada JSON.
   const jsonError = (err as { type?: string })?.type;
   if (jsonError === "entity.parse.failed") return send(400, "Invalid JSON");
   if (jsonError === "entity.too.large") return send(413, "Request too large");
 
-  // Zod: kaunsa field galat hai, wahi batao.
   if (err instanceof ZodError) {
     const message = err.issues
       .map((issue) => {
@@ -31,7 +29,6 @@ export const errorHandler = (err: unknown, _req: Request, res: Response, next: N
     return send(400, err.code === "LIMIT_FILE_SIZE" ? "File too large. Max size is 2MB." : err.message);
   }
 
-  // DB ki jaani-pehchani errors.
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     if (err.code === "P2002") return send(409, "This record already exists");
     if (err.code === "P2003") return send(400, "Related record not found");
@@ -41,7 +38,6 @@ export const errorHandler = (err: unknown, _req: Request, res: Response, next: N
 
   if (err instanceof AppError) return send(err.statusCode, err.message);
 
-  // Anjaani error: log me likho, user ko sirf "server error".
   logger.error("Unexpected error", { error: err });
   return send(500, "Internal server error");
 };
