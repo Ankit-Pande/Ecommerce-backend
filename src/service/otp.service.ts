@@ -12,23 +12,6 @@ const MAX_SEND_PER_HOUR = 5;
 const MAX_WRONG = 3;
 
 const otpKey = (phone: string) => `otp:${phone}`;
-const hourKey = (phone: string) => `otp:hour:${phone}`;
-
-// Pichhle 60 minute me is number par kitne OTP gaye.
-async function sentInLastHour(phone: string): Promise<number> {
-  const key = hourKey(phone);
-  const now = Date.now();
-  await redis.zremrangebyscore(key, 0, now - ONE_HOUR * 1000);
-  return redis.zcard(key);
-}
-
-// OTP bheja, ginti me jodo.
-async function markSent(phone: string): Promise<void> {
-  const key = hourKey(phone);
-  const now = Date.now();
-  await redis.zadd(key, now, String(now));
-  await redis.expire(key, ONE_HOUR);
-}
 
 // OTP check ek hi step me (sahi = mitao, 3 galat = mitao) — brute force nahi ho sakta.
 const VERIFY_SCRIPT = `
@@ -44,7 +27,7 @@ export const otpService = {
     const allowed = await redis.set(`otp:gap:${phone}`, "1", "EX", RESEND_GAP, "NX");
     if (!allowed) throw new AppError("Please wait a minute before requesting a new OTP", 429);
 
-    if ((await sentInLastHour(phone)) >= MAX_SEND_PER_HOUR) {
+    if ((await countHit(`otp:hour:${phone}`, ONE_HOUR)) > MAX_SEND_PER_HOUR) {
       throw new AppError("Too many OTP requests. Try again after 1 hour.", 429);
     }
     const today = new Date().toISOString().slice(0, 10);
@@ -59,7 +42,6 @@ export const otpService = {
       .expire(otpKey(phone), OTP_TTL)
       .exec();
     await sendOtpSms(phone, otp);
-    await markSent(phone);
   },
 
   // OTP sahi hai ya nahi.
