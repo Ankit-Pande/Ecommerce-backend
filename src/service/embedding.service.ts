@@ -18,6 +18,22 @@ type SearchFilters = {
   trending?: boolean;
 };
 
+// AI search ke common filter (SQL me, product "p"): chalu product aur category, gender, age, price, offer, trending.
+export function productFilterSql(filters: SearchFilters): Prisma.Sql[] {
+  const where: Prisma.Sql[] = [
+    Prisma.sql`p."isActive" = true`,
+    Prisma.sql`EXISTS (SELECT 1 FROM "Category" c LEFT JOIN "Category" pc ON pc."id" = c."parentId"
+      WHERE c."id" = p."categoryId" AND c."isActive" = true AND (pc."id" IS NULL OR pc."isActive" = true))`,
+  ];
+  if (filters.gender) where.push(Prisma.sql`p."gender" IN (${Prisma.join(filters.gender)})`);
+  if (filters.ageGroup) where.push(Prisma.sql`p."ageGroup" IN (${Prisma.join(filters.ageGroup)})`);
+  if (filters.minPaise !== undefined) where.push(Prisma.sql`p."sellPaise" >= ${filters.minPaise}`);
+  if (filters.maxPaise !== undefined) where.push(Prisma.sql`p."sellPaise" <= ${filters.maxPaise}`);
+  if (filters.discount) where.push(Prisma.sql`p."discountPercent" > 0`);
+  if (filters.trending) where.push(Prisma.sql`p."isTrending" = true`);
+  return where;
+}
+
 const toVector = (values: number[]) => `[${values.join(",")}]`;
 
 // Product ka text jisse meaning banta hai: naam, brand, category, kiske liye, colour, description.
@@ -92,19 +108,11 @@ export const embeddingService = {
     if (!geminiReady) return [];
     const vector = await queryVector(text);
 
-    const where: Prisma.Sql[] = [
-      Prisma.sql`p."isActive" = true`,
+    const where = [
+      ...productFilterSql(filters),
       Prisma.sql`p."embedding" IS NOT NULL`,
       Prisma.sql`(p."embedding" <=> ${vector}::halfvec) < ${MAX_DISTANCE}`,
-      Prisma.sql`EXISTS (SELECT 1 FROM "Category" c LEFT JOIN "Category" pc ON pc."id" = c."parentId"
-        WHERE c."id" = p."categoryId" AND c."isActive" = true AND (pc."id" IS NULL OR pc."isActive" = true))`,
     ];
-    if (filters.gender) where.push(Prisma.sql`p."gender" IN (${Prisma.join(filters.gender)})`);
-    if (filters.ageGroup) where.push(Prisma.sql`p."ageGroup" IN (${Prisma.join(filters.ageGroup)})`);
-    if (filters.minPaise !== undefined) where.push(Prisma.sql`p."sellPaise" >= ${filters.minPaise}`);
-    if (filters.maxPaise !== undefined) where.push(Prisma.sql`p."sellPaise" <= ${filters.maxPaise}`);
-    if (filters.discount) where.push(Prisma.sql`p."discountPercent" > 0`);
-    if (filters.trending) where.push(Prisma.sql`p."isTrending" = true`);
 
     const [, rows] = await prisma.$transaction([
       prisma.$executeRaw`SET LOCAL hnsw.iterative_scan = strict_order`,

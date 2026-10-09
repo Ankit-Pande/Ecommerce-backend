@@ -43,12 +43,16 @@ Rules:
 
 const ASKED_WHO_FOR = /kis\s*ke\s*liye|for whom|men, women/i;
 
-// Aakhri sawal (zarurat ho to pichhle sawal ke saath).
+// Aakhri sawal; "Kiske liye?" ka jawab (men, women, kids) ho tabhi pichhla sawal saath jodo, naya sawal ho to alag.
 function currentQuestion(messages: Message[]): string {
   const last = messages[messages.length - 1].content;
   const asked = messages[messages.length - 2];
   const before = messages[messages.length - 3];
-  if (asked && ASKED_WHO_FOR.test(asked.content) && before?.role === "user") return `${before.content} ${last}`;
+  const answer = readQuestion(last);
+  const answeredWho = Boolean(answer.gender || answer.ageGroup);
+  if (answeredWho && asked && ASKED_WHO_FOR.test(asked.content) && before?.role === "user") {
+    return `${before.content} ${last}`;
+  }
   return last;
 }
 
