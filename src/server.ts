@@ -10,6 +10,7 @@ import { tokenService } from "./service/token.service";
 const ONE_MINUTE = 60 * 1000;
 const ONE_DAY = 24 * 60 * ONE_MINUTE;
 
+// Server chalu karo: DB se jodo, har minute aur roz wale kaam chalao, band hote waqt sab aaram se band karo.
 const start = async () => {
   await connectDB();
 
@@ -17,36 +18,29 @@ const start = async () => {
     logger.info(`Server running on port ${env.PORT} [${env.NODE_ENV}]`);
   });
 
-  // Har minute: unpaid order cancel + stock wapas, aur khatam offer hatao.
-  let running = false;
-  const minuteJob = setInterval(async () => {
-    if (running) return;
-    running = true;
+  let isJobRunning = false;
+  const everyMinuteJob = setInterval(async () => {
+    if (isJobRunning) return;
+    isJobRunning = true;
     try {
-      await orderService
-        .releaseExpiredOrders()
-        .catch((error) => logger.error("Order expiry job failed", { error }));
-      await productService
-        .expireOffers()
-        .catch((error) => logger.error("Offer expiry job failed", { error }));
+      await orderService.releaseExpiredOrders().catch((error) => logger.error("Order expiry job failed", { error }));
+      await productService.expireOffers().catch((error) => logger.error("Offer expiry job failed", { error }));
     } finally {
-      running = false;
+      isJobRunning = false;
     }
   }, ONE_MINUTE);
 
-  // Roz (aur start par ek baar): purani sessions saaf.
-  const dailyCleanup = async () => {
-    await tokenService
-      .deleteExpiredSessions()
-      .catch((error) => logger.error("Session cleanup failed", { error }));
+  // Purani login sessions saaf karo (start par ek baar, phir roz).
+  const cleanOldSessions = async () => {
+    await tokenService.deleteExpiredSessions().catch((error) => logger.error("Session cleanup failed", { error }));
   };
-  dailyCleanup();
-  const dailyJob = setInterval(dailyCleanup, ONE_DAY);
+  cleanOldSessions();
+  const dailyJob = setInterval(cleanOldSessions, ONE_DAY);
 
-  // Band karte waqt: naye request roko, phir DB aur Redis band.
+  // Band karte waqt: naye request roko, phir DB aur Redis band (10 second me na ho to zabardasti band).
   const shutdown = (signal: string) => {
     logger.info(`${signal} received, shutting down...`);
-    clearInterval(minuteJob);
+    clearInterval(everyMinuteJob);
     clearInterval(dailyJob);
     server.close(async () => {
       await disconnectDB();

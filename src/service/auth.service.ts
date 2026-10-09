@@ -26,7 +26,6 @@ export const authService = {
     const cleanPhone = normalizePhone(phone);
     await otpService.verify(cleanPhone, otp);
 
-    // SUPER_ADMIN_PHONE wala number login karte hi super admin.
     const isSuperAdmin = cleanPhone === env.SUPER_ADMIN_PHONE;
     const user = await prisma.user.upsert({
       where: { phone: cleanPhone },

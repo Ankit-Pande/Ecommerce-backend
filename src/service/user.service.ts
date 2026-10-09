@@ -46,6 +46,6 @@ export const userService = {
       prisma.address.deleteMany({ where: { userId } }),
       prisma.cart.deleteMany({ where: { userId } }),
     ]);
-    await tokenService.revokeAllSessions(userId);
+    await tokenService.logoutAllDevices(userId);
   },
 };

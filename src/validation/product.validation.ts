@@ -1,18 +1,17 @@
 import { z } from "zod";
-import { csv, page, slug } from "./common";
+import { commaList, pageParams, slug } from "./common";
 
 export const productSlugSchema = z.object({
   params: z.object({ slug }),
 });
 
-// Kai product ek saath: ?slugs=a,b,c (max 10)
 export const batchProductSchema = z.object({
-  query: z.object({ slugs: csv(slug, 10) }),
+  query: z.object({ slugs: commaList(slug, 10) }),
 });
 
 export const listReviewSchema = z.object({
   params: z.object({ slug }),
-  query: z.object(page(10)),
+  query: z.object(pageParams(10)),
 });
 
 export const saveReviewSchema = z.object({

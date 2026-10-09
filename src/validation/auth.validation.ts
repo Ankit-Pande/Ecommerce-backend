@@ -1,6 +1,5 @@
 import { z } from "zod";
 
-// 10 digit number; +91, space aur dash ke saath bhi chalega ("+91 98765-43210").
 const loginPhone = z
   .string()
   .transform((v) => v.replace(/[\s-]/g, ""))

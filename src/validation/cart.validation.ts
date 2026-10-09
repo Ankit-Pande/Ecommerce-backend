@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { uuid } from "./common";
 
-// Ek product max 10 piece.
 const quantity = z.coerce.number().int().min(1).max(10);
 
 export const addToCartSchema = z.object({

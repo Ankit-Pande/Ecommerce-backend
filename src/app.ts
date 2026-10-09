@@ -12,18 +12,18 @@ import { healthRoutes } from "./routes/health.routes";
 
 export const app = express();
 
-// Railway proxy ke peeche asli user IP mile (rate limit isi par chalti hai).
+const keepRawBodyForSignature = express.raw({ type: "application/json" });
+
 app.set("trust proxy", env.TRUST_PROXY_HOPS);
 
 app.use(helmet());
 app.use(cors(corsOptions));
 app.use(requestLogger);
 
-// Webhook express.json() se PEHLE — signature raw body par check hota hai.
 app.post(
   "/api/order/webhook",
-  rateLimiter({ bucket: "webhook", windowSec: 60, max: 300, allowOnRedisDown: true }),
-  express.raw({ type: "application/json" }),
+  rateLimiter({ name: "webhook", seconds: 60, maxRequests: 300, allowIfRedisDown: true }),
+  keepRawBodyForSignature,
   razorpayWebhook,
 );
 
@@ -31,10 +31,9 @@ app.use(express.json({ limit: "1mb" }));
 
 app.use("/health", healthRoutes);
 
-// Poori API par ek IP ki limit.
 app.use(
   "/api",
-  rateLimiter({ bucket: "api", windowSec: 60, max: env.API_RATE_MAX, allowOnRedisDown: true }),
+  rateLimiter({ name: "api", seconds: 60, maxRequests: env.API_RATE_MAX, allowIfRedisDown: true }),
   apiRoutes,
 );
 

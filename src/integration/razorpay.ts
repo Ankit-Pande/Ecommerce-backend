@@ -6,7 +6,7 @@ import { AppError } from "../utils/appError";
 
 let client: Razorpay | null = null;
 
-// Razorpay client pehli baar zaroorat par banao (dev me keys na hon to crash na ho).
+// Razorpay client pehli zaroorat par hi banao, taaki laptop par keys na hon to app crash na ho.
 function getRazorpay(): Razorpay {
   if (!client) {
     client = new Razorpay({
@@ -17,7 +17,7 @@ function getRazorpay(): Razorpay {
   return client;
 }
 
-// Signature sahi hai ya nahi (safe compare).
+// Signature sahi hai ya nahi (aise compare karo ki time dekh kar andaza na lage).
 function signatureMatches(secret: string | undefined, message: string | Buffer, signature: string): boolean {
   if (!secret) return false;
   const expected = Buffer.from(crypto.createHmac("sha256", secret).update(message).digest("hex"));
@@ -25,7 +25,7 @@ function signatureMatches(secret: string | undefined, message: string | Buffer, 
   return expected.length === given.length && crypto.timingSafeEqual(expected, given);
 }
 
-// Razorpay par order banao; gateway down ho to 502.
+// Razorpay par order banao; Razorpay band ho to 502 error.
 export async function createRazorpayOrder(amountPaise: number, receipt: string): Promise<string> {
   try {
     const order = await getRazorpay().orders.create({ amount: amountPaise, currency: "INR", receipt });
@@ -36,7 +36,7 @@ export async function createRazorpayOrder(amountPaise: number, receipt: string):
   }
 }
 
-// Webhook ka signature check — nakli "payment ho gaya" isi se rukta hai.
+// Webhook ka signature check karo; isi se nakli "payment ho gaya" message rukta hai.
 export function verifyWebhookSignature(rawBody: Buffer, signature: string): boolean {
   return signatureMatches(env.RAZORPAY_WEBHOOK_SECRET, rawBody, signature);
 }

@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { csv, idParams, orderStatus, page, uuid } from "./common";
+import { commaList, idParams, orderStatus, pageParams, uuid } from "./common";
 
-// idempotencyKey: double click par dusra order na bane; buyNow: sirf ek product, cart jaisa hai waisa.
 export const checkoutSchema = z.object({
   body: z
     .object({
@@ -18,10 +17,9 @@ export const checkoutSchema = z.object({
 
 export const orderIdSchema = z.object({ params: idParams });
 
-// Ek se zyada status: ?status=PENDING,CONFIRMED
 export const listOrderSchema = z.object({
   query: z.object({
-    status: csv(orderStatus, 5).optional(),
-    ...page(),
+    status: commaList(orderStatus, 5).optional(),
+    ...pageParams(),
   }),
 });

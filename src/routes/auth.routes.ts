@@ -8,19 +8,19 @@ const router = Router();
 
 router.post(
   "/send-otp",
-  rateLimiter({ bucket: "send-otp", windowSec: 3600, max: 20 }),
+  rateLimiter({ name: "send-otp", seconds: 3600, maxRequests: 20 }),
   validate(sendOtpSchema),
   sendOtp,
 );
 
 router.post(
   "/verify-otp",
-  rateLimiter({ bucket: "verify-otp", windowSec: 60, max: 10 }),
+  rateLimiter({ name: "verify-otp", seconds: 60, maxRequests: 10 }),
   validate(verifyOtpSchema),
   verifyOtp,
 );
 
-router.post("/refresh", rateLimiter({ bucket: "refresh", windowSec: 60, max: 120 }), refreshTokens);
+router.post("/refresh", rateLimiter({ name: "refresh", seconds: 60, maxRequests: 120 }), refreshTokens);
 router.post("/logout", logout);
 
 export const authRoutes = router;

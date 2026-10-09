@@ -3,12 +3,11 @@ import { prisma, lockUser } from "../config/db";
 import { env } from "../config/env";
 import { createRazorpayOrder } from "../integration/razorpay";
 import { AppError } from "../utils/appError";
-import { bumpStorefrontCache } from "../config/cache";
-import { paginate } from "../utils/paginate";
+import { clearStoreCache } from "../config/cache";
+import { pageQuery, paginate } from "../utils/paginate";
 import { ACTIVE_CATEGORY, finalPrice, stockStatus } from "../utils/price";
 
-// Admin order ko sirf aage badha sakta hai (CONFIRMED -> SHIPPED -> DELIVERED).
-const NEXT_STATUS: Record<OrderStatus, OrderStatus[]> = {
+const ALLOWED_NEXT_STATUS: Record<OrderStatus, OrderStatus[]> = {
   PENDING: [],
   CONFIRMED: ["SHIPPED"],
   SHIPPED: ["DELIVERED"],
@@ -16,9 +15,9 @@ const NEXT_STATUS: Record<OrderStatus, OrderStatus[]> = {
   CANCELLED: [],
 };
 
-// Razorpay ₹1 se kam ka order nahi banata.
 const MIN_ONLINE_PAISE = 100;
 const MAX_OPEN_COD_ORDERS = 10;
+const MAX_ORDER_PAISE = 2147483647;
 
 const ORDER_FIELDS = {
   id: true,
@@ -47,22 +46,27 @@ function checkoutResponse(order: Order) {
 
 type BuyNow = { productId: string; quantity: number };
 
-// Order ki lines (cart ya Buy now); lock=true par products lock taaki price/stock beech me na badle.
-async function readLines(db: Prisma.TransactionClient, userId: string, lock: boolean, buyNow?: BuyNow) {
-  const items = buyNow
-    ? [{ cartItemId: null, ...buyNow }]
-    : ((
-        await db.cart.findUnique({
-          where: { userId },
-          include: { items: { orderBy: { productId: "asc" } } },
-        })
-      )?.items.map((item) => ({ cartItemId: item.id, productId: item.productId, quantity: item.quantity })) ?? []);
+// Order me kya-kya jayega (cart ya Buy now ka product) aur total; lockProducts=true par products ek tay kram me rok lo taaki beech me price ya stock na badle.
+async function getOrderLines(db: Prisma.TransactionClient, userId: string, lockProducts: boolean, buyNow?: BuyNow) {
+  let items: { cartItemId: string | null; productId: string; quantity: number }[];
+  if (buyNow) {
+    items = [{ cartItemId: null, ...buyNow }];
+  } else {
+    const cart = await db.cart.findUnique({
+      where: { userId },
+      include: { items: { orderBy: { productId: "asc" } } },
+    });
+    items = (cart?.items ?? []).map((item) => ({
+      cartItemId: item.id,
+      productId: item.productId,
+      quantity: item.quantity,
+    }));
+  }
   if (items.length === 0) throw new AppError("Cart is empty", 400);
 
   const productIds = items.map((item) => item.productId);
 
-  // id ke kram me lock, taaki do checkout aapas me na atakein (deadlock).
-  if (lock) {
+  if (lockProducts) {
     await db.$queryRaw`
       SELECT "id" FROM "Product" WHERE "id" IN (${Prisma.join(productIds)}) ORDER BY "id" FOR UPDATE`;
   }
@@ -79,12 +83,12 @@ async function readLines(db: Prisma.TransactionClient, userId: string, lock: boo
       stock: true,
     },
   });
-  const byId = new Map(products.map((product) => [product.id, product]));
+  const productById = new Map(products.map((product) => [product.id, product]));
 
   let totalPaise = 0;
   const lines = [];
   for (const item of items) {
-    const product = byId.get(item.productId);
+    const product = productById.get(item.productId);
     if (!product || product.stock < item.quantity) {
       throw new AppError("Some products are unavailable or out of stock", 409);
     }
@@ -102,43 +106,42 @@ async function readLines(db: Prisma.TransactionClient, userId: string, lock: boo
     });
   }
 
-  // DB column Int hai.
-  if (totalPaise > 2147483647) throw new AppError("Order amount is too large", 400);
+  if (totalPaise > MAX_ORDER_PAISE) throw new AppError("Order amount is too large", 400);
   return { lines, totalPaise };
 }
 
-// Khule order ki limit (stock rok ke baithne wala spam rokne ke liye): unpaid online kam, COD zyada.
-async function checkOpenOrders(tx: Prisma.TransactionClient, userId: string, paymentMethod: PaymentMethod) {
+// Ek user ke khule order ki limit (koi stock rok ke na baithe): unpaid online kam, COD zyada.
+async function checkOpenOrderLimit(db: Prisma.TransactionClient, userId: string, paymentMethod: PaymentMethod) {
   const status = paymentMethod === "ONLINE" ? "PENDING" : "CONFIRMED";
   const limit = paymentMethod === "ONLINE" ? env.MAX_PENDING_ORDERS : MAX_OPEN_COD_ORDERS;
-  const open = await tx.order.count({ where: { userId, paymentMethod, status } });
+  const open = await db.order.count({ where: { userId, paymentMethod, status } });
   if (open >= limit) {
     throw new AppError("You have too many open orders. Complete or cancel one first.", 409);
   }
 }
 
-// Order row lock — webhook, cancel aur expiry ek saath na chalein.
-async function lockOrder(tx: Prisma.TransactionClient, orderId: string) {
-  await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${orderId} FOR UPDATE`;
-  const order = await tx.order.findUnique({ where: { id: orderId } });
+// Order ko rok kar padho, taaki payment, cancel aur time-out wala kaam ek saath na chalein.
+async function lockOrder(db: Prisma.TransactionClient, orderId: string) {
+  await db.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${orderId} FOR UPDATE`;
+  const order = await db.order.findUnique({ where: { id: orderId } });
   if (!order) throw new AppError("Order not found", 404);
   return order;
 }
 
 // Order cancel karo aur stock wapas jodo.
-async function cancelLockedOrder(tx: Prisma.TransactionClient, orderId: string, cancelledBy: CancelledBy) {
-  await tx.order.update({ where: { id: orderId }, data: { status: "CANCELLED", cancelledBy } });
-  const items = await tx.orderItem.findMany({ where: { orderId }, orderBy: { productId: "asc" } });
+async function cancelAndReturnStock(db: Prisma.TransactionClient, orderId: string, cancelledBy: CancelledBy) {
+  await db.order.update({ where: { id: orderId }, data: { status: "CANCELLED", cancelledBy } });
+  const items = await db.orderItem.findMany({ where: { orderId }, orderBy: { productId: "asc" } });
   for (const item of items) {
-    await tx.product.update({
+    await db.product.update({
       where: { id: item.productId },
       data: { stock: { increment: item.quantity } },
     });
   }
 }
 
-// Same key ka order pehle se hai to wahi lautao (address/method alag ho to 409).
-function sameCheckout(order: Order, addressId: string, paymentMethod: PaymentMethod) {
+// Isi checkout ka order pehle ban chuka hai to wahi lautao (address ya payment alag ho to error).
+function returnSameOrder(order: Order, addressId: string, paymentMethod: PaymentMethod) {
   if (order.addressId !== addressId || order.paymentMethod !== paymentMethod) {
     throw new AppError("Idempotency key used for another checkout", 409);
   }
@@ -146,7 +149,7 @@ function sameCheckout(order: Order, addressId: string, paymentMethod: PaymentMet
 }
 
 export const orderService = {
-  // Cart (ya Buy now ka ek product) se order: checks -> Razorpay order -> transaction me stock kaato + order save.
+  // Order banao: pehle sab check, phir Razorpay order, phir ek saath stock kaato (jitna bacha ho), order save karo aur cart se wo items hatao.
   async checkout(
     userId: string,
     addressId: string,
@@ -154,14 +157,13 @@ export const orderService = {
     idempotencyKey: string,
     buyNow?: BuyNow,
   ) {
-    const sameKey = { userId_idempotencyKey: { userId, idempotencyKey } };
-    const previous = await prisma.order.findUnique({ where: sameKey });
-    if (previous) return sameCheckout(previous, addressId, paymentMethod);
+    const sameOrderKey = { userId_idempotencyKey: { userId, idempotencyKey } };
+    const previous = await prisma.order.findUnique({ where: sameOrderKey });
+    if (previous) return returnSameOrder(previous, addressId, paymentMethod);
 
-    const preview = await readLines(prisma, userId, false, buyNow);
+    const firstCheck = await getOrderLines(prisma, userId, false, buyNow);
 
-    // Pehle check, taaki galat request par bekaar Razorpay order na bane.
-    await checkOpenOrders(prisma, userId, paymentMethod);
+    await checkOpenOrderLimit(prisma, userId, paymentMethod);
     const address = await prisma.address.findFirst({
       where: { id: addressId, userId },
       select: { id: true },
@@ -170,31 +172,29 @@ export const orderService = {
 
     let razorpayOrderId: string | null = null;
     if (paymentMethod === "ONLINE") {
-      if (preview.totalPaise < MIN_ONLINE_PAISE) {
+      if (firstCheck.totalPaise < MIN_ONLINE_PAISE) {
         throw new AppError("Online payment needs a minimum order of Rs 1. Please use Cash on Delivery.", 400);
       }
-      razorpayOrderId = await createRazorpayOrder(preview.totalPaise, idempotencyKey.slice(0, 40));
+      razorpayOrderId = await createRazorpayOrder(firstCheck.totalPaise, idempotencyKey.slice(0, 40));
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      await lockUser(tx, userId);
-      const raced = await tx.order.findUnique({ where: sameKey });
-      if (raced) return { order: raced, isNew: false, stockStatusChanged: false };
+    const result = await prisma.$transaction(async (db) => {
+      await lockUser(db, userId);
+      const alreadyMade = await db.order.findUnique({ where: sameOrderKey });
+      if (alreadyMade) return { order: alreadyMade, isNew: false, stockStatusChanged: false };
 
-      await checkOpenOrders(tx, userId, paymentMethod);
-      const shipTo = await tx.address.findFirst({ where: { id: addressId, userId } });
+      await checkOpenOrderLimit(db, userId, paymentMethod);
+      const shipTo = await db.address.findFirst({ where: { id: addressId, userId } });
       if (!shipTo) throw new AppError("Address not found", 404);
 
-      const cart = await readLines(tx, userId, true, buyNow);
-      // Razorpay order jitne ka bana, order bhi utne ka hi ho.
-      if (cart.totalPaise !== preview.totalPaise) {
+      const latest = await getOrderLines(db, userId, true, buyNow);
+      if (latest.totalPaise !== firstCheck.totalPaise) {
         throw new AppError("Prices changed. Please review your cart and try again.", 409);
       }
 
-      // Stock sirf tab kaato jab bacha ho (race condition yahin rukti hai).
       let stockStatusChanged = false;
-      for (const line of cart.lines) {
-        const updated = await tx.product.updateMany({
+      for (const line of latest.lines) {
+        const updated = await db.product.updateMany({
           where: { id: line.productId, stock: { gte: line.quantity } },
           data: { stock: { decrement: line.quantity } },
         });
@@ -204,13 +204,13 @@ export const orderService = {
         }
       }
 
-      const order = await tx.order.create({
+      const order = await db.order.create({
         data: {
           userId,
           idempotencyKey,
           addressId,
           paymentMethod,
-          totalPaise: cart.totalPaise,
+          totalPaise: latest.totalPaise,
           status: paymentMethod === "COD" ? "CONFIRMED" : "PENDING",
           paymentExpiresAt:
             paymentMethod === "ONLINE" ? new Date(Date.now() + env.PAYMENT_WINDOW_MINUTES * 60 * 1000) : null,
@@ -223,21 +223,20 @@ export const orderService = {
           shipState: shipTo.state,
           shipPincode: shipTo.pincode,
           items: {
-            create: cart.lines.map(({ cartItemId: _cartItemId, stockBefore: _stockBefore, ...line }) => line),
+            create: latest.lines.map(({ cartItemId: _cartItemId, stockBefore: _stockBefore, ...line }) => line),
           },
         },
       });
 
-      // Sirf wahi cart items hatao jo order me gaye (Buy now me koi nahi).
-      const orderedCartItems = cart.lines.flatMap((line) => (line.cartItemId ? [line.cartItemId] : []));
+      const orderedCartItems = latest.lines.flatMap((line) => (line.cartItemId ? [line.cartItemId] : []));
       if (orderedCartItems.length > 0) {
-        await tx.cartItem.deleteMany({ where: { id: { in: orderedCartItems } } });
+        await db.cartItem.deleteMany({ where: { id: { in: orderedCartItems } } });
       }
       return { order, isNew: true, stockStatusChanged };
     });
 
-    if (!result.isNew) return sameCheckout(result.order, addressId, paymentMethod);
-    if (result.stockStatusChanged) await bumpStorefrontCache();
+    if (!result.isNew) return returnSameOrder(result.order, addressId, paymentMethod);
+    if (result.stockStatusChanged) await clearStoreCache();
     return checkoutResponse(result.order);
   },
 
@@ -257,64 +256,59 @@ export const orderService = {
     return checkoutResponse(order);
   },
 
-  // Payment aa gayi (webhook): amount aur time sahi to order CONFIRM, warna review.
+  // Razorpay ne bataya payment ho gayi: paise aur time sahi to order CONFIRM; late ya galat amount par order cancel aur admin refund kare.
   async handlePaymentCaptured(
     eventId: string,
     payment: { id: string; order_id: string; amount: number; currency: string },
   ) {
     let stockReturned = false;
 
-    await prisma.$transaction(async (tx) => {
-      // Ye event pehle aa chuka hai to kuch mat karo.
-      const saved = await tx.webhookEvent.createMany({ data: [{ id: eventId }], skipDuplicates: true });
-      if (saved.count === 0) return;
+    await prisma.$transaction(async (db) => {
+      const firstTime = await db.webhookEvent.createMany({ data: [{ id: eventId }], skipDuplicates: true });
+      if (firstTime.count === 0) return;
 
-      const found = await tx.order.findUnique({
+      const found = await db.order.findUnique({
         where: { razorpayOrderId: payment.order_id },
         select: { id: true },
       });
-      // Order abhi nahi mila — error do, Razorpay thodi der baad dobara bhejega.
       if (!found) throw new Error(`Order not found for Razorpay order ${payment.order_id}`);
-      const order = await lockOrder(tx, found.id);
+      const order = await lockOrder(db, found.id);
 
       if (order.paymentStatus !== "PENDING") {
-        // Ek order par doosri payment aa gayi — admin refund kare.
         if (order.razorpayPaymentId !== payment.id) {
-          await tx.order.update({ where: { id: order.id }, data: { needsReview: true } });
+          await db.order.update({ where: { id: order.id }, data: { needsReview: true } });
         }
         return;
       }
 
       const onTime =
         order.status === "PENDING" && order.paymentExpiresAt !== null && order.paymentExpiresAt > new Date();
-      const rightAmount = payment.amount === order.totalPaise && payment.currency === "INR";
-      if (onTime && rightAmount) {
-        await tx.order.update({
+      const correctAmount = payment.amount === order.totalPaise && payment.currency === "INR";
+      if (onTime && correctAmount) {
+        await db.order.update({
           where: { id: order.id },
           data: { status: "CONFIRMED", paymentStatus: "COMPLETED", razorpayPaymentId: payment.id },
         });
         return;
       }
 
-      // Deadline ke baad ya galat amount: order cancel (stock wapas), paisa admin lautayega.
       if (order.status === "PENDING") {
-        await cancelLockedOrder(tx, order.id, "SYSTEM");
+        await cancelAndReturnStock(db, order.id, "SYSTEM");
         stockReturned = true;
       }
-      await tx.order.update({
+      await db.order.update({
         where: { id: order.id },
         data: { paymentStatus: "COMPLETED", razorpayPaymentId: payment.id, needsReview: true },
       });
     });
 
-    if (stockReturned) await bumpStorefrontCache();
+    if (stockReturned) await clearStoreCache();
   },
 
   // Order cancel (user apna, admin koi bhi) — sirf ship se pehle aur bina payment wala.
   async cancel(orderId: string, userId?: string) {
-    await prisma.$transaction(async (tx) => {
-      const order = await lockOrder(tx, orderId);
-      // Doosre ka order "not found" jaisa dikhe.
+    await prisma.$transaction(async (db) => {
+      const order = await lockOrder(db, orderId);
       if (userId && order.userId !== userId) throw new AppError("Order not found", 404);
 
       if (order.status === "CANCELLED") throw new AppError("Order is already cancelled", 409);
@@ -327,30 +321,28 @@ export const orderService = {
           409,
         );
       }
-      await cancelLockedOrder(tx, orderId, userId ? "USER" : "ADMIN");
+      await cancelAndReturnStock(db, orderId, userId ? "USER" : "ADMIN");
     });
-    await bumpStorefrontCache();
+    await clearStoreCache();
   },
 
   // Admin order status badle (SHIPPED / DELIVERED / CANCELLED).
   async updateStatus(orderId: string, status: OrderStatus) {
     if (status === "CANCELLED") return orderService.cancel(orderId);
 
-    await prisma.$transaction(async (tx) => {
-      const order = await lockOrder(tx, orderId);
+    await prisma.$transaction(async (db) => {
+      const order = await lockOrder(db, orderId);
       if (order.status === status) return;
-      if (!NEXT_STATUS[order.status].includes(status)) {
+      if (!ALLOWED_NEXT_STATUS[order.status].includes(status)) {
         throw new AppError(`Cannot change order from ${order.status} to ${status}`, 400);
       }
       if (order.needsReview) throw new AppError("Resolve the payment review first", 409);
 
-      await tx.order.update({
+      await db.order.update({
         where: { id: orderId },
         data: {
           status,
-          // COD deliver = paisa mil gaya.
-          ...(status === "DELIVERED" &&
-            order.paymentMethod === "COD" && { paymentStatus: "COMPLETED" as const }),
+          ...(status === "DELIVERED" && order.paymentMethod === "COD" && { paymentStatus: "COMPLETED" as const }),
         },
       });
     });
@@ -358,11 +350,11 @@ export const orderService = {
 
   // Admin ne Razorpay se refund kar diya — review band.
   async markRefunded(orderId: string) {
-    await prisma.$transaction(async (tx) => {
-      const order = await lockOrder(tx, orderId);
+    await prisma.$transaction(async (db) => {
+      const order = await lockOrder(db, orderId);
       if (!order.needsReview) throw new AppError("Order does not need a refund", 409);
 
-      await tx.order.update({
+      await db.order.update({
         where: { id: orderId },
         data: {
           needsReview: false,
@@ -386,23 +378,17 @@ export const orderService = {
     });
 
     for (const { id } of expired) {
-      await prisma.$transaction(async (tx) => {
-        const order = await lockOrder(tx, id);
-        // Lock milne tak webhook ne pay kar diya ho sakta hai.
+      await prisma.$transaction(async (db) => {
+        const order = await lockOrder(db, id);
         if (order.status !== "PENDING" || order.paymentStatus !== "PENDING") return;
-        await cancelLockedOrder(tx, id, "SYSTEM");
+        await cancelAndReturnStock(db, id, "SYSTEM");
       });
     }
-    if (expired.length > 0) await bumpStorefrontCache();
+    if (expired.length > 0) await clearStoreCache();
   },
 
   // User ke orders, naye pehle.
-  async listForUser(
-    userId: string,
-    status: OrderStatus[] | undefined,
-    cursor: string | undefined,
-    limit: number,
-  ) {
+  async listForUser(userId: string, status: OrderStatus[] | undefined, cursor: string | undefined, limit: number) {
     const orders = await prisma.order.findMany({
       where: { userId, ...(status && { status: { in: status } }) },
       select: {
@@ -410,8 +396,7 @@ export const orderService = {
         items: { select: { productName: true, productImage: true, pricePaise: true, quantity: true } },
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: limit + 1,
-      ...(cursor && { cursor: { id: cursor }, skip: 1 }),
+      ...pageQuery(cursor, limit),
     });
     return paginate(orders, limit);
   },
