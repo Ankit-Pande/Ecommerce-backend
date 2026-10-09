@@ -15,7 +15,7 @@ type Tool = {
   declaration: GeminiTool;
   adminOnly?: boolean;
   schema: z.ZodTypeAny;
-  // Ho to pehle user se "haan" chahiye; yahi text usse puchha jaata hai.
+  // Badlav wale kaam me pehle user se "haan" chahiye; yahi sawal usse puchha jaata hai.
   confirmText?: (user: ToolUser, args: any) => Promise<string>;
   run: (user: ToolUser, args: any) => Promise<ToolOutput>;
 };
@@ -24,7 +24,7 @@ const rupees = (paise: number) => Math.round(paise / 100);
 const shortId = (id: string) => id.slice(0, 8).toUpperCase();
 const LOW_STOCK_AT = 5;
 
-// LLM ko product ka chhota roop (id ke saath, taaki cart me daal sake).
+// AI ko product ki chhoti jaankari do (id ke saath, taaki cart me daal sake).
 const brief = (card: Card) => ({
   id: card.id,
   name: card.name,
@@ -247,7 +247,7 @@ export function toolsFor(user: ToolUser): GeminiTool[] {
     .map((tool) => tool.declaration);
 }
 
-// Tool ka naam aur args check karke tool do (galat ho to null).
+// Tool ka naam aur uske input check karo; galat ho to null.
 export function pickTool(user: ToolUser, name: string, rawArgs: unknown) {
   const tool = TOOLS[name];
   if (!tool || (tool.adminOnly && !user.isAdmin)) return null;

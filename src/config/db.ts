@@ -21,8 +21,8 @@ export async function disconnectDB(): Promise<void> {
 }
 
 // Ek user ki requests ek-ek karke chalao (user ki row lock); user blocked ya deleted ho to roko.
-export async function lockUser(tx: Prisma.TransactionClient, userId: string): Promise<void> {
-  const [user] = await tx.$queryRaw<{ isBlocked: boolean; isDeleted: boolean }[]>`
+export async function lockUser(db: Prisma.TransactionClient, userId: string): Promise<void> {
+  const [user] = await db.$queryRaw<{ isBlocked: boolean; isDeleted: boolean }[]>`
     SELECT "isBlocked", "isDeleted" FROM "User" WHERE "id" = ${userId} FOR UPDATE`;
   if (!user || user.isDeleted) throw new AppError("Account deleted", 403);
   if (user.isBlocked) throw new AppError("User blocked", 403);

@@ -22,7 +22,7 @@ type CatalogQuery = {
   limit: number;
 };
 
-// Sort ke options (id se tie-break, taaki page 2 par product repeat na ho).
+// Sort ke tarike (barabar hone par id se, taaki agle page par product dobara na aaye).
 const SORTS: Record<CatalogQuery["sort"], Prisma.ProductOrderByWithRelationInput[]> = {
   latest: [{ createdAt: "desc" }, { id: "desc" }],
   price_asc: [{ sellPaise: "asc" }, { id: "asc" }],
@@ -86,7 +86,7 @@ export function readBudget(q: string): { text: string; minPrice?: number; maxPri
   return { text: clean(q.replace(matched, " ")), ...budget };
 }
 
-// Har shabd naam/colour/brand/category me kahin bhi mile; brand-category id pehle nikalo taaki index lage.
+// Har shabd naam, colour, brand ya category me kahin mile; brand aur category pehle dhoondho taaki search tez ho.
 async function searchWhere(words: string[]): Promise<Prisma.ProductWhereInput> {
   const conditions = await Promise.all(
     words.map(async (word) => {
@@ -140,7 +140,7 @@ function baseFilters(query: {
 async function typoMatchIds(text: string): Promise<string[]> {
   const [, rows] = await prisma.$transaction([
     prisma.$executeRaw`SET LOCAL statement_timeout = '2s'`,
-    // Teen alag hisse (naam, brand, category) — ek OR me likhne par index nahi lagta.
+    // Naam, brand aur category teeno alag se dhoondho, ek saath likhne par search dheemi ho jaati hai.
     prisma.$queryRaw<{ id: string }[]>`
       SELECT p."id", similarity(p."name", ${text}) AS score FROM "Product" p
       WHERE p."isActive" = true AND p."name" % ${text}
@@ -161,7 +161,7 @@ export const catalogService = {
   async list(query: CatalogQuery) {
     const budget = readBudget(query.q ?? "");
     const words = searchWords(budget.text);
-    // Text bacha par koi kaam ka shabd nahi ("a under 2000") — khaali jawab, poora catalog nahi.
+    // Text hai par kaam ka shabd nahi (jaise "a under 2000"): khaali jawab do, poora catalog nahi.
     if (budget.text.length > 0 && words.length === 0) return { items: [], nextCursor: null };
 
     const minPaise = query.minPricePaise ?? toPaise(budget.minPrice);

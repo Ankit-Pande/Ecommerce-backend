@@ -59,9 +59,9 @@ export const tokenService = {
   async refreshSession(refreshToken: string) {
     const { userId, sessionId, jti } = verifyRefreshToken(refreshToken);
 
-    const result = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT "id" FROM "Session" WHERE "id" = ${sessionId} FOR UPDATE`;
-      const session = await tx.session.findUnique({
+    const result = await prisma.$transaction(async (db) => {
+      await db.$queryRaw`SELECT "id" FROM "Session" WHERE "id" = ${sessionId} FOR UPDATE`;
+      const session = await db.session.findUnique({
         where: { id: sessionId },
         include: { user: { select: { isBlocked: true, isDeleted: true } } },
       });
@@ -71,7 +71,7 @@ export const tokenService = {
 
       if (jti === session.jti) {
         const nextJti = randomUUID();
-        await tx.session.update({
+        await db.session.update({
           where: { id: sessionId },
           data: { jti: nextJti, previousJti: jti, rotatedAt: new Date(), expiresAt: refreshExpiry() },
         });
@@ -84,7 +84,7 @@ export const tokenService = {
         Date.now() - session.rotatedAt.getTime() < ROTATION_GRACE_MS;
       if (withinGrace) return tokenPair(userId, sessionId, session.jti);
 
-      await tx.session.delete({ where: { id: sessionId } });
+      await db.session.delete({ where: { id: sessionId } });
       return null;
     });
 

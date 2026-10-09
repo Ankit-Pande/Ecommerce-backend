@@ -15,24 +15,24 @@ async function activeProductId(slug: string) {
   return product.id;
 }
 
-// Product row lock — ek saath do review badlein to rating ki ginti galat na ho.
-async function lockProduct(tx: Prisma.TransactionClient, productId: string) {
-  await tx.$queryRaw`SELECT "id" FROM "Product" WHERE "id" = ${productId} FOR UPDATE`;
+// Product ko rok lo, taaki ek saath do review aayein to rating ki ginti galat na ho.
+async function lockProduct(db: Prisma.TransactionClient, productId: string) {
+  await db.$queryRaw`SELECT "id" FROM "Product" WHERE "id" = ${productId} FOR UPDATE`;
 }
 
 // Product ki rating ginti badlo aur average dobara nikalo.
 async function changeRating(
-  tx: Prisma.TransactionClient,
+  db: Prisma.TransactionClient,
   productId: string,
   ratingChange: number,
   countChange: number,
 ) {
-  const product = await tx.product.update({
+  const product = await db.product.update({
     where: { id: productId },
     data: { ratingSum: { increment: ratingChange }, ratingCount: { increment: countChange } },
     select: { ratingSum: true, ratingCount: true },
   });
-  await tx.product.update({
+  await db.product.update({
     where: { id: productId },
     data: { ratingAverage: product.ratingCount > 0 ? product.ratingSum / product.ratingCount : 0 },
   });
@@ -66,16 +66,16 @@ export const reviewService = {
     });
     if (!delivered) throw new AppError("You can review a product only after its order is delivered.", 403);
 
-    const review = await prisma.$transaction(async (tx) => {
-      await lockProduct(tx, productId);
-      const old = await tx.review.findUnique({ where: { productId_userId: { productId, userId } } });
-      const saved = await tx.review.upsert({
+    const review = await prisma.$transaction(async (db) => {
+      await lockProduct(db, productId);
+      const old = await db.review.findUnique({ where: { productId_userId: { productId, userId } } });
+      const saved = await db.review.upsert({
         where: { productId_userId: { productId, userId } },
         create: { productId, userId, rating, comment },
         update: { rating, comment },
         select: { id: true, rating: true, comment: true, createdAt: true },
       });
-      await changeRating(tx, productId, rating - (old?.rating ?? 0), old ? 0 : 1);
+      await changeRating(db, productId, rating - (old?.rating ?? 0), old ? 0 : 1);
       return saved;
     });
     await clearStoreCache();
@@ -84,16 +84,16 @@ export const reviewService = {
 
   // Admin galat review hataye.
   async removeByAdmin(reviewId: string) {
-    await prisma.$transaction(async (tx) => {
-      const found = await tx.review.findUnique({ where: { id: reviewId }, select: { productId: true } });
+    await prisma.$transaction(async (db) => {
+      const found = await db.review.findUnique({ where: { id: reviewId }, select: { productId: true } });
       if (!found) throw new AppError("Review not found", 404);
-      await lockProduct(tx, found.productId);
+      await lockProduct(db, found.productId);
 
-      // Lock ke baad dobara padho — beech me user ne badal diya ho sakta hai.
-      const review = await tx.review.findUnique({ where: { id: reviewId }, select: { rating: true } });
+      // Rokne ke baad review dobara padho, beech me user ne badal diya ho sakta hai.
+      const review = await db.review.findUnique({ where: { id: reviewId }, select: { rating: true } });
       if (!review) throw new AppError("Review not found", 404);
-      await tx.review.delete({ where: { id: reviewId } });
-      await changeRating(tx, found.productId, -review.rating, -1);
+      await db.review.delete({ where: { id: reviewId } });
+      await changeRating(db, found.productId, -review.rating, -1);
     });
     await clearStoreCache();
   },

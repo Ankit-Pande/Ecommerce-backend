@@ -5,7 +5,7 @@ import { asyncHandler } from "../utils/asyncHandler";
 import { AppError } from "../utils/appError";
 import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from "../utils/cookies";
 
-// Access token jawab me jaata hai, refresh token httpOnly cookie me.
+// Access token jawab me jaata hai, refresh token aisi cookie me jise browser ka JavaScript padh na sake.
 
 export const sendOtp = asyncHandler(async (req: Request, res: Response) => {
   await authService.requestOtp(req.body.phone);

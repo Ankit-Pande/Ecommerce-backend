@@ -7,7 +7,7 @@ import { embedTexts, geminiReady } from "../integration/gemini";
 
 const BATCH_SIZE = 100;
 const QUERY_VECTOR_SECONDS = 7 * 24 * 3600;
-// Isse door (cosine distance) wala product sawal se mel nahi khata.
+// Itna door ka product sawal se mel nahi khata, use mat dikhao.
 const MAX_DISTANCE = 0.45;
 
 type SemanticFilters = {
@@ -65,7 +65,7 @@ async function queryVector(text: string): Promise<string> {
 }
 
 export const embeddingService = {
-  // Products ka embedding banao/badlo (100-100 ke batch me).
+  // Products ka embedding banao ya badlo (100-100 karke).
   async syncProducts(ids: string[]) {
     if (!geminiReady || ids.length === 0) return;
     for (let i = 0; i < ids.length; i += BATCH_SIZE) {
@@ -83,7 +83,7 @@ export const embeddingService = {
     }
   },
 
-  // Admin ke save ke baad background me sync; fail ho to bas log (script baad me bhar degi).
+  // Admin ke save ke baad peeche-peeche embedding banao; fail ho to bas log (script baad me bana degi).
   syncInBackground(ids: string[]) {
     this.syncProducts(ids).catch((error) => logger.error("Embedding sync failed", { error, count: ids.length }));
   },
@@ -107,7 +107,7 @@ export const embeddingService = {
     if (filters.discount) where.push(Prisma.sql`p."discountPercent" > 0`);
     if (filters.trending) where.push(Prisma.sql`p."isTrending" = true`);
 
-    // Filter ke saath bhi index se poore result mile (pgvector iterative scan).
+    // Filter (gender, price) lagne par bhi poore result milein.
     const [, rows] = await prisma.$transaction([
       prisma.$executeRaw`SET LOCAL hnsw.iterative_scan = strict_order`,
       prisma.$queryRaw<{ id: string }[]>`

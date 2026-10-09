@@ -13,7 +13,7 @@ const MAX_WRONG = 3;
 
 const otpKey = (phone: string) => `otp:${phone}`;
 
-// OTP check ek hi step me (sahi = mitao, 3 galat = mitao) — brute force nahi ho sakta.
+// OTP ek hi baar me check karo: sahi ho ya 3 baar galat, dono par OTP mita do (andaza laga kar koi login na kare).
 const VERIFY_SCRIPT = `
 local code = redis.call('HGET', KEYS[1], 'code')
 if not code then return 0 end

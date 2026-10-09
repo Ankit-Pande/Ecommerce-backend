@@ -36,7 +36,7 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, message: "Order cancelled" });
 });
 
-// Razorpay webhook: signature check, fir payment confirm. Fail ho to 500 taaki Razorpay dobara bheje.
+// Razorpay ka payment message: pehle check ki asli hai, phir order confirm. Fail ho to 500, Razorpay dobara bhejega.
 export const razorpayWebhook = async (req: Request, res: Response) => {
   try {
     const signature = req.headers["x-razorpay-signature"];
@@ -51,7 +51,7 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
 
     const event = JSON.parse(rawBody.toString());
     const payment = event.payload?.payment?.entity;
-    // Sirf payment.captured par kaam; fail payment par user dobara pay kar sakta hai.
+    // Sirf "payment ho gayi" wale message par kaam; fail payment par user dobara pay kar sakta hai.
     if (event.event === "payment.captured" && payment) {
       const eventId = req.headers["x-razorpay-event-id"];
       await orderService.handlePaymentCaptured(typeof eventId === "string" ? eventId : payment.id, payment);

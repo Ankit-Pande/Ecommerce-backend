@@ -14,7 +14,7 @@ type AddressInput = {
 
 const MAX_ADDRESSES = 5;
 
-// Har badlav user lock ke andar, taaki do default address na ban jayein.
+// Address ke saare kaam: har badlav user ko rok kar hota hai, taaki do default address na ban jayein.
 export const addressService = {
   // User ke saare address (default pehle).
   async list(userId: string) {
@@ -26,26 +26,26 @@ export const addressService = {
 
   // Naya address (max 5, pehla apne aap default).
   async create(userId: string, data: AddressInput) {
-    return prisma.$transaction(async (tx) => {
-      await lockUser(tx, userId);
-      const count = await tx.address.count({ where: { userId } });
+    return prisma.$transaction(async (db) => {
+      await lockUser(db, userId);
+      const count = await db.address.count({ where: { userId } });
       if (count >= MAX_ADDRESSES) {
         throw new AppError("Maximum 5 addresses allowed. Delete one first.", 400);
       }
 
       const isDefault = data.isDefault === true || count === 0;
       if (isDefault) {
-        await tx.address.updateMany({ where: { userId, isDefault: true }, data: { isDefault: false } });
+        await db.address.updateMany({ where: { userId, isDefault: true }, data: { isDefault: false } });
       }
-      return tx.address.create({ data: { ...data, userId, isDefault } });
+      return db.address.create({ data: { ...data, userId, isDefault } });
     });
   },
 
   // Address badlo.
   async update(userId: string, id: string, data: Partial<AddressInput>) {
-    return prisma.$transaction(async (tx) => {
-      await lockUser(tx, userId);
-      const existing = await tx.address.findFirst({ where: { id, userId } });
+    return prisma.$transaction(async (db) => {
+      await lockUser(db, userId);
+      const existing = await db.address.findFirst({ where: { id, userId } });
       if (!existing) throw new AppError("Address not found", 404);
       // User bina default address ke na rahe.
       if (existing.isDefault && data.isDefault === false) {
@@ -53,26 +53,26 @@ export const addressService = {
       }
 
       if (data.isDefault) {
-        await tx.address.updateMany({
+        await db.address.updateMany({
           where: { userId, isDefault: true, id: { not: id } },
           data: { isDefault: false },
         });
       }
-      return tx.address.update({ where: { id }, data });
+      return db.address.update({ where: { id }, data });
     });
   },
 
   // Address hatao; default hataya to sabse naya default ban jaata hai.
   async remove(userId: string, id: string) {
-    await prisma.$transaction(async (tx) => {
-      await lockUser(tx, userId);
-      const existing = await tx.address.findFirst({ where: { id, userId } });
+    await prisma.$transaction(async (db) => {
+      await lockUser(db, userId);
+      const existing = await db.address.findFirst({ where: { id, userId } });
       if (!existing) throw new AppError("Address not found", 404);
-      await tx.address.delete({ where: { id } });
+      await db.address.delete({ where: { id } });
 
       if (!existing.isDefault) return;
-      const next = await tx.address.findFirst({ where: { userId }, orderBy: { createdAt: "desc" } });
-      if (next) await tx.address.update({ where: { id: next.id }, data: { isDefault: true } });
+      const next = await db.address.findFirst({ where: { userId }, orderBy: { createdAt: "desc" } });
+      if (next) await db.address.update({ where: { id: next.id }, data: { isDefault: true } });
     });
   },
 };

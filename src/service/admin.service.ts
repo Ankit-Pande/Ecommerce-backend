@@ -27,10 +27,10 @@ type ProductInput = {
 
 type Actor = { userId: string; role: Role };
 
-// In fields se product ka embedding banta hai.
+// In fields se AI search ka data (embedding) banta hai.
 const TEXT_FIELDS = ["name", "description", "brandId", "categoryId", "color", "gender", "ageGroup"] as const;
 
-// Form data se product ki DB row banao (single aur bulk dono ke liye).
+// Form ke data se product save karne layak data banao (ek aur bahut saare, dono ke liye).
 function productRow(p: ProductInput, images: string[]) {
   return {
     name: p.name,
@@ -127,9 +127,9 @@ export const adminService = {
 
   // Product badlo (sirf bheje gaye fields; nayi images aayi to purani ki jagah).
   async updateProduct(id: string, data: Partial<ProductInput> & { isActive?: boolean }, newImages: string[]) {
-    const product = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT "id" FROM "Product" WHERE "id" = ${id} FOR UPDATE`;
-      const old = await tx.product.findUnique({
+    const product = await prisma.$transaction(async (db) => {
+      await db.$queryRaw`SELECT "id" FROM "Product" WHERE "id" = ${id} FOR UPDATE`;
+      const old = await db.product.findUnique({
         where: { id },
         select: { pricePaise: true, discountPercent: true, offerEndsAt: true },
       });
@@ -140,7 +140,7 @@ export const adminService = {
       const discountPercent = data.discountPercent ?? old.discountPercent;
       const offerEndsAt = data.offerEndsAt !== undefined ? data.offerEndsAt : old.offerEndsAt;
 
-      return tx.product.update({
+      return db.product.update({
         where: { id },
         data: {
           ...rest,
@@ -162,8 +162,7 @@ export const adminService = {
     return product;
   },
 
-  // Sale: category (ya poore store) ke saare product par ek discount, end date ke saath. 0 = sale khatam.
-  // sellPaise ka hisaab finalPrice() jaisa hi: discount poore rupee me.
+  // Sale: category (ya poore store) ke saare products par ek discount lagao; 0 diya to sale khatam.
   async applySale(data: { categoryId?: string; discountPercent: number; offerEndsAt?: Date | null }) {
     const categoryId = data.categoryId ?? null;
     const offerEndsAt = data.discountPercent > 0 ? (data.offerEndsAt ?? null) : null;
@@ -373,9 +372,9 @@ export const adminService = {
     await clearStoreCache();
   },
 
-  // Dashboard ke chaar number. Sab indexed column par chhoti ginti hain (poori table nahi).
+  // Dashboard ke chaar number (aaj ke order, kamai, payment baaki, bhejne wale).
   async getStats() {
-    // Din India ke time se shuru hota hai, server UTC par chale tab bhi.
+    // "Aaj" India ke time se gino, server kisi bhi time zone me ho.
     const IST_OFFSET_MS = 330 * 60 * 1000;
     const istNow = new Date(Date.now() + IST_OFFSET_MS);
     istNow.setUTCHours(0, 0, 0, 0);

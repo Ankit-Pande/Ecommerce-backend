@@ -46,8 +46,8 @@ async function getCart(userId: string) {
 }
 
 // Product chalu hai aur itna stock hai? Nahi to error.
-async function checkStock(tx: Prisma.TransactionClient, productId: string, quantity: number) {
-  const product = await tx.product.findFirst({
+async function checkStock(db: Prisma.TransactionClient, productId: string, quantity: number) {
+  const product = await db.product.findFirst({
     where: { id: productId, isActive: true, category: ACTIVE_CATEGORY },
     select: { stock: true },
   });
@@ -62,22 +62,22 @@ export const cartService = {
 
   // Cart me daalo; pehle se hai to quantity jud jaati hai (duplicate nahi).
   async addItem(userId: string, productId: string, quantity: number) {
-    await prisma.$transaction(async (tx) => {
-      await lockUser(tx, userId);
-      const cart = await tx.cart.upsert({ where: { userId }, create: { userId }, update: {} });
-      const existing = await tx.cartItem.findUnique({
+    await prisma.$transaction(async (db) => {
+      await lockUser(db, userId);
+      const cart = await db.cart.upsert({ where: { userId }, create: { userId }, update: {} });
+      const existing = await db.cartItem.findUnique({
         where: { cartId_productId: { cartId: cart.id, productId } },
       });
       if (!existing) {
-        const items = await tx.cartItem.count({ where: { cartId: cart.id } });
+        const items = await db.cartItem.count({ where: { cartId: cart.id } });
         if (items >= MAX_ITEMS) {
           throw new AppError(`Cart can hold ${MAX_ITEMS} different products. Remove one first.`, 400);
         }
       }
       const total = (existing?.quantity ?? 0) + quantity;
-      await checkStock(tx, productId, total);
+      await checkStock(db, productId, total);
 
-      await tx.cartItem.upsert({
+      await db.cartItem.upsert({
         where: { cartId_productId: { cartId: cart.id, productId } },
         create: { cartId: cart.id, productId, quantity },
         update: { quantity: total },
@@ -88,10 +88,10 @@ export const cartService = {
 
   // Quantity badlo (+/- button).
   async updateItem(userId: string, productId: string, quantity: number) {
-    await prisma.$transaction(async (tx) => {
-      await lockUser(tx, userId);
-      await checkStock(tx, productId, quantity);
-      const changed = await tx.cartItem.updateMany({
+    await prisma.$transaction(async (db) => {
+      await lockUser(db, userId);
+      await checkStock(db, productId, quantity);
+      const changed = await db.cartItem.updateMany({
         where: { productId, cart: { userId } },
         data: { quantity },
       });
@@ -102,9 +102,9 @@ export const cartService = {
 
   // Ek item cart se hatao.
   async removeItem(userId: string, productId: string) {
-    await prisma.$transaction(async (tx) => {
-      await lockUser(tx, userId);
-      await tx.cartItem.deleteMany({ where: { productId, cart: { userId } } });
+    await prisma.$transaction(async (db) => {
+      await lockUser(db, userId);
+      await db.cartItem.deleteMany({ where: { productId, cart: { userId } } });
     });
     return getCart(userId);
   },
