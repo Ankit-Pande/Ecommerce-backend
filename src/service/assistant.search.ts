@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { createHash } from "crypto";
 import { prisma } from "../config/db";
 import { logger } from "../config/winston";
@@ -5,7 +6,7 @@ import { CACHE_SECONDS, getOrSetCache } from "../config/cache";
 import { orderByIds } from "../utils/paginate";
 import { CARD_SELECT, productCard } from "../utils/price";
 import { catalogService, readBudget, toPaise } from "./catalog.service";
-import { embeddingService } from "./embedding.service";
+import { embeddingService, productFilterSql } from "./embedding.service";
 
 export const PAGE_SIZE = 5;
 const MAX_RESULTS = 50;
@@ -110,7 +111,7 @@ export function readQuestion(question: string): Question {
   result.words = text
     .split(/[^a-z0-9ऀ-ॿ-]+/)
     .map((word) => SAME_MEANING_WORDS[word] ?? word.replace(/^-+|-+$/g, ""))
-    .filter((word) => word.length >= 2 && !FILLER_WORDS.has(word))
+    .filter((word) => (word.length >= 2 || /^\d$/.test(word)) && !FILLER_WORDS.has(word))
     .join(" ");
   return result;
 }
@@ -120,31 +121,35 @@ export function hasSomethingToSearch(q: Question): boolean {
   return Boolean(q.words || q.discount || q.trending || q.minPaise || q.maxPaise || q.sort !== "latest");
 }
 
-// Har shabd poora mile (naam, colour, brand ya category me); "phones" ko "headphones" na maane.
-async function fullWordMatches(cards: Card[], words: string): Promise<Card[]> {
-  const rows = await prisma.product.findMany({
-    where: { id: { in: cards.map((card) => card.id) } },
-    select: {
-      id: true,
-      name: true,
-      color: true,
-      brand: { select: { name: true } },
-      category: { select: { name: true, parent: { select: { name: true } } } },
-    },
+const SORT_SQL: Record<Sort, Prisma.Sql> = {
+  latest: Prisma.sql`p."createdAt" DESC`,
+  price_asc: Prisma.sql`p."sellPaise" ASC`,
+  price_desc: Prisma.sql`p."sellPaise" DESC`,
+  discount: Prisma.sql`p."discountPercent" DESC`,
+  rating: Prisma.sql`p."ratingAverage" DESC`,
+};
+
+// Har shabd poora shabd ban kar mile (naam, rang, brand ya category me), jaise "ac" se AC mile, badminton nahi (Redis cache).
+async function wordMatches(q: Question): Promise<Card[]> {
+  const key = createHash("sha1").update(JSON.stringify(q)).digest("hex");
+  return getOrSetCache(`ai:words:${key}`, CACHE_SECONDS, async () => {
+    const wordConditions = q.words.split(" ").map((word) => {
+      const stem = word.replace(/s$/, "").replace(/[^a-z0-9\u0900-\u097f-]/g, "");
+      const pattern = `\\m${stem}(s|es)?\\M`;
+      return Prisma.sql`concat_ws(' ', p."name", p."color", b."name", c."name", pc."name") ~* ${pattern}`;
+    });
+    const rows = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT p."id" FROM "Product" p
+      JOIN "Category" c ON c."id" = p."categoryId"
+      LEFT JOIN "Category" pc ON pc."id" = c."parentId"
+      LEFT JOIN "Brand" b ON b."id" = p."brandId"
+      WHERE ${Prisma.join([...productFilterSql(q), ...wordConditions], " AND ")}
+      ORDER BY ${SORT_SQL[q.sort]}, p."id" DESC
+      LIMIT ${MAX_RESULTS}`;
+    const ids = rows.map((row) => row.id);
+    const cards = await prisma.product.findMany({ where: { id: { in: ids } }, select: CARD_SELECT });
+    return orderByIds(cards, ids).map(productCard);
   });
-  const patterns = words.split(" ").map((word) => {
-    const stem = word.replace(/s$/, "").replace(/[^a-z0-9-]/g, "");
-    return new RegExp(`\\b${stem}(s|es)?\\b`, "i");
-  });
-  const exact = new Set(
-    rows
-      .filter((p) => {
-        const text = [p.name, p.color, p.brand?.name, p.category.name, p.category.parent?.name].join(" ");
-        return patterns.every((pattern) => pattern.test(text));
-      })
-      .map((p) => p.id),
-  );
-  return cards.filter((card) => exact.has(card.id));
 }
 
 // Meaning wali search (Redis cache); Gemini limit par khaali, chat na ruke.
@@ -161,25 +166,23 @@ async function meaningMatches(q: Question): Promise<Card[]> {
   });
 }
 
-// Pehle instant (Redis/DB naam-search); sab poore mile to wahi, warna meaning wali, wo bhi na mile to sirf poore mile wale.
+// Search: shabd na hon to sirf filter (catalog, Redis cache); shabd hon to poore shabd wali search, kuch na mile to meaning wali.
 async function searchAll(q: Question): Promise<Card[]> {
-  const instant = await catalogService.list({
-    q: q.words || undefined,
-    gender: q.gender,
-    ageGroup: q.ageGroup,
-    minPricePaise: q.minPaise,
-    maxPricePaise: q.maxPaise,
-    discount: q.discount,
-    section: q.trending ? "trending" : undefined,
-    sort: q.sort,
-    limit: MAX_RESULTS,
-  });
-  if (!q.words) return instant.items;
-
-  const exact = await fullWordMatches(instant.items, q.words);
-  if (exact.length > 0 && exact.length === instant.items.length) return exact;
-  const meaning = await meaningMatches(q);
-  return meaning.length > 0 ? meaning : exact;
+  if (!q.words) {
+    const list = await catalogService.list({
+      gender: q.gender,
+      ageGroup: q.ageGroup,
+      minPricePaise: q.minPaise,
+      maxPricePaise: q.maxPaise,
+      discount: q.discount,
+      section: q.trending ? "trending" : undefined,
+      sort: q.sort,
+      limit: MAX_RESULTS,
+    });
+    return list.items;
+  }
+  const byWords = await wordMatches(q);
+  return byWords.length > 0 ? byWords : meaningMatches(q);
 }
 
 // Results me Men aur Women dono (ya Kids aur bade dono) mile to puchhna padega kiske liye.
