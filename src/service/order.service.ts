@@ -401,12 +401,13 @@ export const orderService = {
     return paginate(orders, limit);
   },
 
-  // User ka ek order: items (photo ke saath), delivery address aur payment.
+  // User ka ek order: items (photo, description aur product link ke saath), delivery address aur payment.
   async getForUser(userId: string, orderId: string) {
     const order = await prisma.order.findFirst({
       where: { id: orderId, userId },
       select: {
         ...ORDER_FIELDS,
+        updatedAt: true,
         shipName: true,
         shipPhone: true,
         shipLine1: true,
@@ -415,7 +416,14 @@ export const orderService = {
         shipState: true,
         shipPincode: true,
         items: {
-          select: { productId: true, productName: true, productImage: true, pricePaise: true, quantity: true },
+          select: {
+            productId: true,
+            productName: true,
+            productImage: true,
+            pricePaise: true,
+            quantity: true,
+            product: { select: { slug: true, description: true } },
+          },
         },
       },
     });
