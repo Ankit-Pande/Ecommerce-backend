@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../config/db";
 import { AppError } from "../utils/appError";
-import { bumpStorefrontCache } from "../config/cache";
+import { clearStoreCache } from "../config/cache";
 import { paginate } from "../utils/paginate";
 import { ACTIVE_CATEGORY } from "../utils/price";
 
@@ -78,7 +78,7 @@ export const reviewService = {
       await changeRating(tx, productId, rating - (old?.rating ?? 0), old ? 0 : 1);
       return saved;
     });
-    await bumpStorefrontCache();
+    await clearStoreCache();
     return review;
   },
 
@@ -95,6 +95,6 @@ export const reviewService = {
       await tx.review.delete({ where: { id: reviewId } });
       await changeRating(tx, found.productId, -review.rating, -1);
     });
-    await bumpStorefrontCache();
+    await clearStoreCache();
   },
 };

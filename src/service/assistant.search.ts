@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { prisma } from "../config/db";
 import { logger } from "../config/winston";
-import { CACHE_SECONDS, remember } from "../config/cache";
+import { CACHE_SECONDS, getOrSetCache } from "../config/cache";
 import { CARD_SELECT, productCard } from "../utils/price";
 import { catalogService, readBudget, toPaise } from "./catalog.service";
 import { embeddingService } from "./embedding.service";
@@ -153,7 +153,7 @@ async function exactMatches(cards: Card[], words: string): Promise<Card[]> {
 // Meaning wali search (Redis cache); Gemini limit par khaali, chat na ruke.
 async function meaningMatches(q: Question): Promise<Card[]> {
   const key = createHash("sha1").update(JSON.stringify(q)).digest("hex");
-  return remember(`ai:semantic:${key}`, CACHE_SECONDS, async () => {
+  return getOrSetCache(`ai:semantic:${key}`, CACHE_SECONDS, async () => {
     const ids = await embeddingService.searchIds(q.meaning, q, MAX_RESULTS);
     if (ids.length === 0) return [];
     const rows = await prisma.product.findMany({ where: { id: { in: ids } }, select: CARD_SELECT });

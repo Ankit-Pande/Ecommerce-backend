@@ -1,5 +1,5 @@
 import { env } from "../config/env";
-import { countHit, redis } from "../config/redis";
+import { countInWindow, redis } from "../config/redis";
 import { AppError } from "../utils/appError";
 import { generateOtp, hashOtp } from "../utils/otp";
 import { sendOtpSms } from "../integration/msg91";
@@ -27,11 +27,11 @@ export const otpService = {
     const allowed = await redis.set(`otp:gap:${phone}`, "1", "EX", RESEND_GAP, "NX");
     if (!allowed) throw new AppError("Please wait a minute before requesting a new OTP", 429);
 
-    if ((await countHit(`otp:hour:${phone}`, ONE_HOUR)) > MAX_SEND_PER_HOUR) {
+    if ((await countInWindow(`otp:hour:${phone}`, ONE_HOUR)) > MAX_SEND_PER_HOUR) {
       throw new AppError("Too many OTP requests. Try again after 1 hour.", 429);
     }
     const today = new Date().toISOString().slice(0, 10);
-    if ((await countHit(`otp:day:${today}`, 2 * 24 * 3600)) > env.DAILY_SMS_CAP) {
+    if ((await countInWindow(`otp:day:${today}`, 2 * 24 * 3600)) > env.DAILY_SMS_CAP) {
       throw new AppError("OTP service busy. Please try again later.", 503);
     }
 

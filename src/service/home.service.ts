@@ -1,5 +1,5 @@
 import { prisma } from "../config/db";
-import { CACHE_SECONDS, remember } from "../config/cache";
+import { CACHE_SECONDS, getOrSetCache } from "../config/cache";
 import { ACTIVE_CATEGORY, CARD_SELECT, productCard } from "../utils/price";
 
 const SECTION_SIZE = 10;
@@ -7,7 +7,7 @@ const SECTION_SIZE = 10;
 // Home page ka saara data ek call me (5 min cache): banner, saari category, 4 product section.
 export const homeService = {
   async getHome() {
-    return remember("home", CACHE_SECONDS, async () => {
+    return getOrSetCache("home", CACHE_SECONDS, async () => {
       const liveProduct = { isActive: true, category: ACTIVE_CATEGORY };
       const [banners, categories, trending, featured, latest, offers] = await Promise.all([
         prisma.banner.findMany({

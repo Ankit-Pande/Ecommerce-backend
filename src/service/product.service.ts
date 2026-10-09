@@ -1,12 +1,12 @@
 import { prisma } from "../config/db";
 import { AppError } from "../utils/appError";
-import { bumpStorefrontCache, CACHE_SECONDS, remember } from "../config/cache";
+import { clearStoreCache, CACHE_SECONDS, getOrSetCache } from "../config/cache";
 import { ACTIVE_CATEGORY, CARD_SELECT, productCard } from "../utils/price";
 
 export const productService = {
   // Product detail page (5 min cache).
   async getBySlug(slug: string) {
-    const product = await remember(`product:${slug}`, CACHE_SECONDS, async () => {
+    const product = await getOrSetCache(`product:${slug}`, CACHE_SECONDS, async () => {
       const row = await prisma.product.findFirst({
         where: { slug, isActive: true, category: ACTIVE_CATEGORY },
         select: {
@@ -45,7 +45,7 @@ export const productService = {
   // Kai slug ke product ek saath, usi kram me (guest ka recently viewed).
   async getManyBySlugs(requested: string[]) {
     const slugs = [...new Set(requested)];
-    const cards = await remember(`products:${[...slugs].sort().join(",")}`, CACHE_SECONDS, async () => {
+    const cards = await getOrSetCache(`products:${[...slugs].sort().join(",")}`, CACHE_SECONDS, async () => {
       const rows = await prisma.product.findMany({
         where: { slug: { in: slugs }, isActive: true, category: ACTIVE_CATEGORY },
         select: CARD_SELECT,
@@ -58,7 +58,7 @@ export const productService = {
 
   // Usi category ke 8 aur products.
   async getRelated(slug: string) {
-    const related = await remember(`related:${slug}`, CACHE_SECONDS, async () => {
+    const related = await getOrSetCache(`related:${slug}`, CACHE_SECONDS, async () => {
       const row = await prisma.product.findFirst({
         where: { slug, isActive: true, category: ACTIVE_CATEGORY },
         select: { id: true, categoryId: true },
@@ -88,6 +88,6 @@ export const productService = {
     const changed = await prisma.$executeRaw`
       UPDATE "Product" SET "discountPercent" = 0, "sellPaise" = "pricePaise", "offerEndsAt" = NULL
       WHERE "discountPercent" > 0 AND "offerEndsAt" <= NOW()`;
-    if (changed > 0) await bumpStorefrontCache();
+    if (changed > 0) await clearStoreCache();
   },
 };

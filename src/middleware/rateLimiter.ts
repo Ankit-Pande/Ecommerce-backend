@@ -1,5 +1,5 @@
 import { RequestHandler } from "express";
-import { countHit } from "../config/redis";
+import { countInWindow } from "../config/redis";
 import { logger } from "../config/winston";
 import { AppError } from "../utils/appError";
 
@@ -30,7 +30,7 @@ export function rateLimiter({ bucket, windowSec, max, allowOnRedisDown }: RateLi
   return async (req, _res, next) => {
     try {
       const who = req.user?.userId ?? ipKey(req.ip ?? "unknown");
-      const count = await countHit(`rate:${bucket}:${who}`, windowSec);
+      const count = await countInWindow(`rate:${bucket}:${who}`, windowSec);
       if (count > max) return next(new AppError("Too many requests, please try again later.", 429));
       next();
     } catch (error) {

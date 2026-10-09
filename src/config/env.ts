@@ -1,12 +1,13 @@
 import "dotenv/config";
 import { z } from "zod";
 
-// NODE_ENV na diya ho to production maano, taaki live par galti se dev mode na chale.
-const isProd = (process.env.NODE_ENV ?? "production") === "production";
+// NODE_ENV na diya ho to live (production) maano, taaki live par galti se dev mode na chale.
+const isProduction = (process.env.NODE_ENV ?? "production") === "production";
 
-const neededInProd = isProd ? z.string().min(1) : z.string().optional();
+// Live par zaroori, laptop par khaali chal jayega.
+const requiredOnLive = isProduction ? z.string().min(1) : z.string().optional();
 
-// Saari .env values yahin check hoti hain — galat ho to app start hi nahi hogi.
+// .env ki saari values yahin check hoti hain; galat ho to app start hi nahi hogi.
 const schema = z
   .object({
     NODE_ENV: z.enum(["development", "production"]).default("production"),
@@ -33,22 +34,22 @@ const schema = z
       .regex(/^[1-9]\d*[smhd]$/)
       .default("15m"),
 
-    MSG91_AUTH_KEY: neededInProd,
-    MSG91_SENDER_ID: neededInProd,
-    MSG91_OTP_TEMPLATE_ID: neededInProd,
+    MSG91_AUTH_KEY: requiredOnLive,
+    MSG91_SENDER_ID: requiredOnLive,
+    MSG91_OTP_TEMPLATE_ID: requiredOnLive,
     DAILY_SMS_CAP: z.coerce.number().int().positive().default(2000),
 
-    CLOUDINARY_CLOUD_NAME: neededInProd,
-    CLOUDINARY_API_KEY: neededInProd,
-    CLOUDINARY_API_SECRET: neededInProd,
+    CLOUDINARY_CLOUD_NAME: requiredOnLive,
+    CLOUDINARY_API_KEY: requiredOnLive,
+    CLOUDINARY_API_SECRET: requiredOnLive,
 
-    RAZORPAY_KEY_ID: neededInProd,
-    RAZORPAY_KEY_SECRET: neededInProd,
-    RAZORPAY_WEBHOOK_SECRET: neededInProd,
+    RAZORPAY_KEY_ID: requiredOnLive,
+    RAZORPAY_KEY_SECRET: requiredOnLive,
+    RAZORPAY_WEBHOOK_SECRET: requiredOnLive,
     PAYMENT_WINDOW_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
     MAX_PENDING_ORDERS: z.coerce.number().int().min(1).max(10).default(2),
 
-    // Key na ho to AI sirf instant search karega (meaning wali search aur LLM band).
+    // Key na ho to AI sirf naam wali search karega (meaning wali search aur LLM band).
     GEMINI_API_KEY: z.string().optional(),
     GEMINI_CHAT_MODEL: z.string().default("gemini-2.5-flash"),
     GEMINI_EMBED_MODEL: z.string().default("gemini-embedding-001"),
@@ -62,12 +63,12 @@ const schema = z
     "FRONTEND_ORIGINS cannot point at localhost in production",
   );
 
-const parsed = schema.safeParse(process.env);
+const result = schema.safeParse(process.env);
 
-if (!parsed.success) {
+if (!result.success) {
   console.error("Invalid environment variables:");
-  console.error(parsed.error.flatten());
+  console.error(result.error.flatten());
   process.exit(1);
 }
 
-export const env = parsed.data;
+export const env = result.data;

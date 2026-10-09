@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../config/db";
-import { CACHE_SECONDS, remember } from "../config/cache";
+import { CACHE_SECONDS, getOrSetCache } from "../config/cache";
 import { paginate } from "../utils/paginate";
 import { ACTIVE_CATEGORY, CARD_SELECT, productCard } from "../utils/price";
 
@@ -170,7 +170,7 @@ export const catalogService = {
       .update(JSON.stringify({ ...query, words, minPaise, maxPaise }))
       .digest("hex");
 
-    return remember(`catalog:${cacheKey}`, CACHE_SECONDS, async () => {
+    return getOrSetCache(`catalog:${cacheKey}`, CACHE_SECONDS, async () => {
       const filters = baseFilters(query);
       if (query.brand) filters.push({ brand: { slug: { in: query.brand }, isActive: true } });
       if (query.color) filters.push({ color: { in: query.color } });
@@ -216,7 +216,7 @@ export const catalogService = {
   // Sidebar filter: is category ke brands aur colours.
   async filters(query: { category?: string; subcategory?: string }) {
     const cacheKey = `filters:${query.category ?? ""}:${query.subcategory ?? ""}`;
-    return remember(cacheKey, CACHE_SECONDS, async () => {
+    return getOrSetCache(cacheKey, CACHE_SECONDS, async () => {
       const where: Prisma.ProductWhereInput = { AND: baseFilters(query) };
       const [brands, colors] = await Promise.all([
         prisma.brand.findMany({

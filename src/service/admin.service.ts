@@ -1,7 +1,7 @@
 import { OrderStatus, Role } from "@prisma/client";
 import { prisma } from "../config/db";
 import { AppError } from "../utils/appError";
-import { bumpStorefrontCache } from "../config/cache";
+import { clearStoreCache } from "../config/cache";
 import { paginate } from "../utils/paginate";
 import { finalPrice } from "../utils/price";
 import { titleCase } from "../utils/text";
@@ -90,7 +90,7 @@ export const adminService = {
   async createProduct(data: ProductInput, images: string[]) {
     if (images.length === 0) throw new AppError("At least one product image required", 400);
     const product = await prisma.product.create({ data: productRow(data, images) });
-    await bumpStorefrontCache();
+    await clearStoreCache();
     embeddingService.syncInBackground([product.id]);
     return product;
   },
@@ -115,7 +115,7 @@ export const adminService = {
     const toCreate = products.filter((p) => !skipped.includes(p.slug));
     if (toCreate.length > 0) {
       await prisma.product.createMany({ data: toCreate.map((p) => productRow(p, p.images)) });
-      await bumpStorefrontCache();
+      await clearStoreCache();
       const created = await prisma.product.findMany({
         where: { slug: { in: toCreate.map((p) => p.slug) } },
         select: { id: true },
@@ -156,7 +156,7 @@ export const adminService = {
         },
       });
     });
-    await bumpStorefrontCache();
+    await clearStoreCache();
     // Naam/description/category jaisa kuch badla to AI search ka meaning bhi naya.
     if (TEXT_FIELDS.some((field) => data[field] !== undefined)) embeddingService.syncInBackground([id]);
     return product;
@@ -175,14 +175,14 @@ export const adminService = {
         "updatedAt" = NOW()
       WHERE ${categoryId}::text IS NULL
          OR "categoryId" IN (SELECT "id" FROM "Category" WHERE "id" = ${categoryId} OR "parentId" = ${categoryId})`;
-    await bumpStorefrontCache();
+    await clearStoreCache();
     return { updated };
   },
 
   // Product delete nahi, sirf chhupao (purane orders me chahiye).
   async hideProduct(id: string) {
     await prisma.product.update({ where: { id }, data: { isActive: false } });
-    await bumpStorefrontCache();
+    await clearStoreCache();
   },
 
   // Edit form ke liye ek product (chhupa hua bhi).
@@ -274,7 +274,7 @@ export const adminService = {
   async createCategory(data: { name: string; slug: string; parentId?: string }, image?: string) {
     if (data.parentId) await checkParent(data.parentId);
     const category = await prisma.category.create({ data: { ...data, image } });
-    await bumpStorefrontCache();
+    await clearStoreCache();
     return category;
   },
 
@@ -294,7 +294,7 @@ export const adminService = {
       where: { id },
       data: { ...data, ...(image && { image }) },
     });
-    await bumpStorefrontCache();
+    await clearStoreCache();
     return category;
   },
 
@@ -307,7 +307,7 @@ export const adminService = {
     if (products > 0) throw new AppError("Category has products, cannot delete", 409);
     if (children > 0) throw new AppError("Category has subcategories, cannot delete", 409);
     await prisma.category.delete({ where: { id } });
-    await bumpStorefrontCache();
+    await clearStoreCache();
   },
 
   // Saare brand.
@@ -321,14 +321,14 @@ export const adminService = {
   // Naya brand.
   async createBrand(data: { name: string; slug: string }, logo?: string) {
     const brand = await prisma.brand.create({ data: { ...data, logo } });
-    await bumpStorefrontCache();
+    await clearStoreCache();
     return brand;
   },
 
   // Brand badlo ya chhupao.
   async updateBrand(id: string, data: { name?: string; isActive?: boolean }) {
     const brand = await prisma.brand.update({ where: { id }, data });
-    await bumpStorefrontCache();
+    await clearStoreCache();
     return brand;
   },
 
@@ -342,7 +342,7 @@ export const adminService = {
       );
     }
     await prisma.brand.delete({ where: { id } });
-    await bumpStorefrontCache();
+    await clearStoreCache();
   },
 
   // Saare banner, position ke kram me.
@@ -356,21 +356,21 @@ export const adminService = {
   // Naya banner.
   async createBanner(data: { link?: string; position: number }, image: string) {
     const banner = await prisma.banner.create({ data: { ...data, image } });
-    await bumpStorefrontCache();
+    await clearStoreCache();
     return banner;
   },
 
   // Banner badlo ya chhupao.
   async updateBanner(id: string, data: { link?: string | null; position?: number; isActive?: boolean }) {
     const banner = await prisma.banner.update({ where: { id }, data });
-    await bumpStorefrontCache();
+    await clearStoreCache();
     return banner;
   },
 
   // Banner delete.
   async deleteBanner(id: string) {
     await prisma.banner.delete({ where: { id } });
-    await bumpStorefrontCache();
+    await clearStoreCache();
   },
 
   // Dashboard ke chaar number. Sab indexed column par chhoti ginti hain (poori table nahi).

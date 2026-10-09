@@ -3,7 +3,7 @@ import { prisma, lockUser } from "../config/db";
 import { env } from "../config/env";
 import { createRazorpayOrder } from "../integration/razorpay";
 import { AppError } from "../utils/appError";
-import { bumpStorefrontCache } from "../config/cache";
+import { clearStoreCache } from "../config/cache";
 import { paginate } from "../utils/paginate";
 import { ACTIVE_CATEGORY, finalPrice, stockStatus } from "../utils/price";
 
@@ -237,7 +237,7 @@ export const orderService = {
     });
 
     if (!result.isNew) return sameCheckout(result.order, addressId, paymentMethod);
-    if (result.stockStatusChanged) await bumpStorefrontCache();
+    if (result.stockStatusChanged) await clearStoreCache();
     return checkoutResponse(result.order);
   },
 
@@ -307,7 +307,7 @@ export const orderService = {
       });
     });
 
-    if (stockReturned) await bumpStorefrontCache();
+    if (stockReturned) await clearStoreCache();
   },
 
   // Order cancel (user apna, admin koi bhi) — sirf ship se pehle aur bina payment wala.
@@ -329,7 +329,7 @@ export const orderService = {
       }
       await cancelLockedOrder(tx, orderId, userId ? "USER" : "ADMIN");
     });
-    await bumpStorefrontCache();
+    await clearStoreCache();
   },
 
   // Admin order status badle (SHIPPED / DELIVERED / CANCELLED).
@@ -393,7 +393,7 @@ export const orderService = {
         await cancelLockedOrder(tx, id, "SYSTEM");
       });
     }
-    if (expired.length > 0) await bumpStorefrontCache();
+    if (expired.length > 0) await clearStoreCache();
   },
 
   // User ke orders, naye pehle.

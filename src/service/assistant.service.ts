@@ -1,4 +1,4 @@
-import { redis, countHit } from "../config/redis";
+import { redis, countInWindow } from "../config/redis";
 import { logger } from "../config/winston";
 import { chatOnce, GeminiContent, GeminiPart, geminiReady } from "../integration/gemini";
 import { AppError } from "../utils/appError";
@@ -64,7 +64,7 @@ function errorText(error: unknown): string {
 
 // Galat sawal par warning; 3 baar me 24 ghante block.
 async function addStrike(who: string): Promise<ChatReply> {
-  const strikes = await countHit(`ai:strike:${who}`, BLOCK_SEC);
+  const strikes = await countInWindow(`ai:strike:${who}`, BLOCK_SEC);
   if (strikes >= STRIKE_LIMIT) {
     await redis.set(`ai:block:${who}`, "1", "EX", BLOCK_SEC);
     throw new AppError("Assistant blocked for 24 hours due to unsafe messages.", 403);
@@ -74,7 +74,7 @@ async function addStrike(who: string): Promise<ChatReply> {
 
 // LLM ka 5 ghante ka quota bacha hai? (har call par ginti +1)
 async function useQuota(user: ToolUser): Promise<boolean> {
-  const used = await countHit(`ai:quota:${user.userId}`, QUOTA_WINDOW_SEC);
+  const used = await countInWindow(`ai:quota:${user.userId}`, QUOTA_WINDOW_SEC);
   return used <= (user.isAdmin ? QUOTA.admin : QUOTA.user);
 }
 
