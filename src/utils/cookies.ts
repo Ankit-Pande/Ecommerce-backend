@@ -3,30 +3,30 @@ import { env } from "../config/env";
 import { REFRESH_TTL_DAYS } from "./token";
 
 const REFRESH_COOKIE = "refreshToken";
-const isProd = env.NODE_ENV === "production";
+const isProduction = env.NODE_ENV === "production";
 
-// httpOnly cookie — browser ka JS isse padh nahi sakta; sirf /api/auth par jaati hai.
-const baseOptions: CookieOptions = {
+// Cookie ki settings: browser ka JavaScript ise padh nahi sakta, aur ye sirf /api/auth par jaati hai.
+const cookieOptions: CookieOptions = {
   httpOnly: true,
-  secure: isProd,
-  sameSite: isProd ? "none" : "lax",
+  secure: isProduction,
+  sameSite: isProduction ? "none" : "lax",
   path: "/api/auth",
 };
 
-// Refresh token cookie me set karo.
+// Refresh token cookie me rakho (15 din).
 export function setRefreshCookie(res: Response, token: string): void {
   res.cookie(REFRESH_COOKIE, token, {
-    ...baseOptions,
+    ...cookieOptions,
     maxAge: REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000,
   });
 }
 
 // Logout par cookie hatao.
 export function clearRefreshCookie(res: Response): void {
-  res.clearCookie(REFRESH_COOKIE, baseOptions);
+  res.clearCookie(REFRESH_COOKIE, cookieOptions);
 }
 
-// Request ki cookie se refresh token nikalo.
+// Request ki cookies me se refresh token dhoondh kar do.
 export function readRefreshCookie(req: Request): string | undefined {
   for (const part of req.headers.cookie?.split(";") ?? []) {
     const [name, ...rest] = part.trim().split("=");

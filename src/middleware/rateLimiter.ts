@@ -3,39 +3,39 @@ import { countInWindow } from "../config/redis";
 import { logger } from "../config/winston";
 import { AppError } from "../utils/appError";
 
-// bucket = route ka fixed naam; allowOnRedisDown: browsing chalne do, OTP/payment roko.
-interface RateLimitOptions {
-  bucket: string;
-  windowSec: number;
-  max: number;
-  allowOnRedisDown?: boolean;
+// name = limit ka naam, seconds me maxRequests tak hi request; Redis band ho to allowIfRedisDown tay kare.
+interface LimitOptions {
+  name: string;
+  seconds: number;
+  maxRequests: number;
+  allowIfRedisDown?: boolean;
 }
 
-// IP ki key: IPv6 ke sirf pehle 4 group (ek aadmi ke paas poora /64 block hota hai).
-function ipKey(ip: string): string {
+// Guest ki pehchaan IP se. IPv6 me sirf pehle 4 hisse lo (ek ghar ke saare device ek hi gine jayein).
+function visitorIp(ip: string): string {
   if (ip.startsWith("::ffff:")) return ip.slice(7);
   if (!ip.includes(":")) return ip;
-
   if (!ip.includes("::")) return ip.split(":").slice(0, 4).join(":");
 
-  const [head, tail = ""] = ip.split("::");
-  const headParts = head ? head.split(":") : [];
-  const tailParts = tail ? tail.split(":") : [];
-  const zeros = Math.max(8 - headParts.length - tailParts.length, 0);
-  return [...headParts, ...Array(zeros).fill("0"), ...tailParts].slice(0, 4).join(":");
+  // "::" ka matlab beech me zero wale hisse; unhe bhar kar pehle 4 hisse lo.
+  const [start, end = ""] = ip.split("::");
+  const startParts = start ? start.split(":") : [];
+  const endParts = end ? end.split(":") : [];
+  const zeros = Array(Math.max(8 - startParts.length - endParts.length, 0)).fill("0");
+  return [...startParts, ...zeros, ...endParts].slice(0, 4).join(":");
 }
 
 // Ek aadmi zyada request na bheje: login user ko userId se, guest ko IP se gino.
-export function rateLimiter({ bucket, windowSec, max, allowOnRedisDown }: RateLimitOptions): RequestHandler {
+export function rateLimiter({ name, seconds, maxRequests, allowIfRedisDown }: LimitOptions): RequestHandler {
   return async (req, _res, next) => {
     try {
-      const who = req.user?.userId ?? ipKey(req.ip ?? "unknown");
-      const count = await countInWindow(`rate:${bucket}:${who}`, windowSec);
-      if (count > max) return next(new AppError("Too many requests, please try again later.", 429));
+      const who = req.user?.userId ?? visitorIp(req.ip ?? "unknown");
+      const count = await countInWindow(`rate:${name}:${who}`, seconds);
+      if (count > maxRequests) return next(new AppError("Too many requests, please try again later.", 429));
       next();
     } catch (error) {
-      logger.error("Rate limiter error", { error, bucket });
-      if (allowOnRedisDown) return next();
+      logger.error("Rate limiter error", { error, name });
+      if (allowIfRedisDown) return next();
       next(new AppError("Service busy. Please try again shortly.", 503));
     }
   };

@@ -11,7 +11,7 @@ router.get("/", (_req, res) => {
 });
 
 // DB aur Redis dono chal rahe hain? (limit ke saath, taaki koi DB pool na bhar de)
-const readyLimiter = rateLimiter({ bucket: "health", windowSec: 60, max: 60, allowOnRedisDown: true });
+const readyLimiter = rateLimiter({ name: "health", seconds: 60, maxRequests: 60, allowIfRedisDown: true });
 
 router.get("/ready", readyLimiter, async (_req, res) => {
   try {

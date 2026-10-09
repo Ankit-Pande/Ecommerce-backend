@@ -8,31 +8,31 @@ export const ACTIVE_CATEGORY = {
 
 const LOW_STOCK_AT = 5;
 
-// Offer ki date nikal gayi to discount 0.
-function effectiveDiscount(discountPercent: number, offerEndsAt?: Date | null): number {
+// Aaj ka discount: offer ki date nikal gayi to 0.
+function currentDiscount(discountPercent: number, offerEndsAt?: Date | null): number {
   if (offerEndsAt && offerEndsAt.getTime() <= Date.now()) return 0;
   return discountPercent;
 }
 
-// Discount ke baad ka price (paise me). Discount poore rupee me katta hai, taki ₹259.48 jaisa daam na dikhe.
+// Discount ke baad ka price (paise me); discount poore rupee me katta hai, taaki ₹259.48 jaisa daam na bane.
 export function finalPrice(pricePaise: number, discountPercent: number, offerEndsAt?: Date | null): number {
-  const percent = effectiveDiscount(discountPercent, offerEndsAt);
+  const percent = currentDiscount(discountPercent, offerEndsAt);
   return pricePaise - Math.round((pricePaise * percent) / 10000) * 100;
 }
 
-// Customer ko exact stock nahi, sirf status dikhta hai.
+// Customer ko poora stock number nahi, sirf "hai / kam hai / khatam" dikhta hai.
 export function stockStatus(stock: number): "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK" {
   if (stock <= 0) return "OUT_OF_STOCK";
   if (stock <= LOW_STOCK_AT) return "LOW_STOCK";
   return "IN_STOCK";
 }
 
-// Average rating (1 decimal) aur kitne review.
-function rating(sum: number, count: number) {
+// Average rating (jaise 4.3) aur kitne logon ne di.
+function ratingInfo(sum: number, count: number) {
   return { average: count === 0 ? 0 : Math.round((sum / count) * 10) / 10, count };
 }
 
-// Product card ke liye DB se ye fields mangao.
+// Product card ke liye DB se sirf ye fields lo.
 export const CARD_SELECT = {
   id: true,
   name: true,
@@ -46,7 +46,7 @@ export const CARD_SELECT = {
   ratingCount: true,
 } satisfies Prisma.ProductSelect;
 
-// Har list (home, catalog, cart...) ka ek hi product card shape.
+// Har jagah (home, catalog, cart) product card ek jaisa dikhe.
 export function productCard(p: Prisma.ProductGetPayload<{ select: typeof CARD_SELECT }>) {
   return {
     id: p.id,
@@ -55,9 +55,9 @@ export function productCard(p: Prisma.ProductGetPayload<{ select: typeof CARD_SE
     image: p.images[0] ?? null,
     pricePaise: p.pricePaise,
     offerEndsAt: p.offerEndsAt,
-    discountPercent: effectiveDiscount(p.discountPercent, p.offerEndsAt),
+    discountPercent: currentDiscount(p.discountPercent, p.offerEndsAt),
     finalPricePaise: finalPrice(p.pricePaise, p.discountPercent, p.offerEndsAt),
     stockStatus: stockStatus(p.stock),
-    rating: rating(p.ratingSum, p.ratingCount),
+    rating: ratingInfo(p.ratingSum, p.ratingCount),
   };
 }

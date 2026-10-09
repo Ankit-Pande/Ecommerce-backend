@@ -3,7 +3,7 @@ import { ZodSchema } from "zod";
 
 type ParsedRequest = { body?: unknown; query?: unknown; params?: unknown };
 
-// Zod se body/query/params check karo aur saaf data wapas req par rakho.
+// Request ki body, query aur params Zod se check karo; saaf kiya hua data wapas req me rakho.
 export function validate(schema: ZodSchema): RequestHandler {
   return async (req, _res, next) => {
     try {

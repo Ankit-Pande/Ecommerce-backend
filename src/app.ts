@@ -22,7 +22,7 @@ app.use(requestLogger);
 // Webhook express.json() se PEHLE — signature raw body par check hota hai.
 app.post(
   "/api/order/webhook",
-  rateLimiter({ bucket: "webhook", windowSec: 60, max: 300, allowOnRedisDown: true }),
+  rateLimiter({ name: "webhook", seconds: 60, maxRequests: 300, allowIfRedisDown: true }),
   express.raw({ type: "application/json" }),
   razorpayWebhook,
 );
@@ -34,7 +34,7 @@ app.use("/health", healthRoutes);
 // Poori API par ek IP ki limit.
 app.use(
   "/api",
-  rateLimiter({ bucket: "api", windowSec: 60, max: env.API_RATE_MAX, allowOnRedisDown: true }),
+  rateLimiter({ name: "api", seconds: 60, maxRequests: env.API_RATE_MAX, allowIfRedisDown: true }),
   apiRoutes,
 );
 

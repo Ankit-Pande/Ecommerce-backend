@@ -5,16 +5,18 @@ import { ZodError } from "zod";
 import { logger } from "../config/winston";
 import { AppError } from "../utils/appError";
 
-// Har error ko saaf message me badlo; andar ki detail sirf log me, user ko kabhi nahi.
+// Har error ka saaf message user ko bhejo; andar ki detail sirf log me jaye.
 export const errorHandler = (err: unknown, _req: Request, res: Response, next: NextFunction) => {
   if (res.headersSent) return next(err);
 
   const send = (status: number, message: string) => res.status(status).json({ success: false, message });
 
-  const bodyError = (err as { type?: string })?.type;
-  if (bodyError === "entity.parse.failed") return send(400, "Invalid JSON");
-  if (bodyError === "entity.too.large") return send(413, "Request too large");
+  // Galat ya bahut bada JSON.
+  const jsonError = (err as { type?: string })?.type;
+  if (jsonError === "entity.parse.failed") return send(400, "Invalid JSON");
+  if (jsonError === "entity.too.large") return send(413, "Request too large");
 
+  // Zod: kaunsa field galat hai, wahi batao.
   if (err instanceof ZodError) {
     const message = err.issues
       .map((issue) => {
@@ -29,6 +31,7 @@ export const errorHandler = (err: unknown, _req: Request, res: Response, next: N
     return send(400, err.code === "LIMIT_FILE_SIZE" ? "File too large. Max size is 2MB." : err.message);
   }
 
+  // DB ki jaani-pehchani errors.
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     if (err.code === "P2002") return send(409, "This record already exists");
     if (err.code === "P2003") return send(400, "Related record not found");
@@ -38,6 +41,7 @@ export const errorHandler = (err: unknown, _req: Request, res: Response, next: N
 
   if (err instanceof AppError) return send(err.statusCode, err.message);
 
+  // Anjaani error: log me likho, user ko sirf "server error".
   logger.error("Unexpected error", { error: err });
   return send(500, "Internal server error");
 };

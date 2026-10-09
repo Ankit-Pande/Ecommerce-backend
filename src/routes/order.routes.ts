@@ -22,7 +22,7 @@ router.use(authCheck);
 
 router.post(
   "/checkout",
-  rateLimiter({ bucket: "checkout", windowSec: 60, max: 10 }),
+  rateLimiter({ name: "checkout", seconds: 60, maxRequests: 10 }),
   validate(checkoutSchema),
   checkout,
 );

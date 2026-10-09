@@ -8,10 +8,10 @@ const router = Router();
 
 // Search (q) wali request par alag limit — har naya search DB tak jaata hai.
 const searchLimiter = rateLimiter({
-  bucket: "catalog-search",
-  windowSec: 60,
-  max: 30,
-  allowOnRedisDown: true,
+  name: "catalog-search",
+  seconds: 60,
+  maxRequests: 30,
+  allowIfRedisDown: true,
 });
 const limitSearchOnly: RequestHandler = (req, res, next) =>
   req.query.q ? searchLimiter(req, res, next) : next();

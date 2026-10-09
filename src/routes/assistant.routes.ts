@@ -11,7 +11,7 @@ const router = Router();
 router.post(
   "/chat",
   optionalAuth,
-  rateLimiter({ bucket: "assistant", windowSec: 60, max: 15 }),
+  rateLimiter({ name: "assistant", seconds: 60, maxRequests: 15 }),
   validate(chatSchema),
   chat,
 );

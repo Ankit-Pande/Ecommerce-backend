@@ -4,26 +4,27 @@ import { AppError } from "./appError";
 
 export const REFRESH_TTL_DAYS = 15;
 
-// Access token me role nahi rakhte — role har request par DB/session se aata hai.
+// Access token ke andar kya hai (role nahi rakhte, role har baar session se aata hai).
 interface AccessPayload {
   userId: string;
   sessionId: string;
 }
 
+// Refresh token ke andar kya hai (jti = har token ki alag pehchaan).
 interface RefreshPayload {
   userId: string;
   sessionId: string;
   jti: string;
 }
 
-// Chhota access token banao (15 min).
+// Chhoti umar ka access token banao (15 minute).
 export function signAccessToken(payload: AccessPayload): string {
   return jwt.sign(payload, env.JWT_ACCESS_SECRET, {
     expiresIn: env.JWT_ACCESS_EXPIRY as jwt.SignOptions["expiresIn"],
   });
 }
 
-// Lamba refresh token banao (15 din).
+// Lambi umar ka refresh token banao (15 din).
 export function signRefreshToken(payload: RefreshPayload): string {
   return jwt.sign(payload, env.JWT_REFRESH_SECRET, { expiresIn: `${REFRESH_TTL_DAYS}d` });
 }
@@ -44,8 +45,7 @@ export function verifyAccessToken(token: string): AccessPayload {
 export function verifyRefreshToken(token: string): RefreshPayload {
   try {
     const data = jwt.verify(token, env.JWT_REFRESH_SECRET, { algorithms: ["HS256"] });
-    if (typeof data === "string" || !data.userId || !data.sessionId || !data.jti)
-      throw new Error("bad payload");
+    if (typeof data === "string" || !data.userId || !data.sessionId || !data.jti) throw new Error("bad payload");
     return { userId: data.userId, sessionId: data.sessionId, jti: data.jti };
   } catch {
     throw new AppError("Invalid or expired refresh token", 401);

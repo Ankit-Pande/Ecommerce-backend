@@ -4,8 +4,10 @@ import { AppError } from "../utils/appError";
 const BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const EMBED_SIZE = 768;
 
+// .env me key ho tabhi AI ke Gemini wale kaam chalein.
 export const geminiReady = Boolean(env.GEMINI_API_KEY);
 
+// Gemini ke message ke hisse: text, function call ya function ka jawab.
 export type GeminiPart = {
   text?: string;
   functionCall?: { name: string; args?: Record<string, unknown> };
@@ -14,7 +16,7 @@ export type GeminiPart = {
 export type GeminiContent = { role: "user" | "model"; parts: GeminiPart[] };
 export type GeminiTool = { name: string; description: string; parameters?: Record<string, unknown> };
 
-// Gemini API ko request (15 sec me jawab na aaye to rok do).
+// Gemini API ko request bhejo; 15 second me jawab na aaye to chhod do, limit (429) par saaf message.
 async function callGemini<T>(path: string, body: unknown): Promise<T> {
   if (!env.GEMINI_API_KEY) throw new AppError("AI assistant is not configured", 503);
   const res = await fetch(`${BASE_URL}/${path}`, {
@@ -28,7 +30,7 @@ async function callGemini<T>(path: string, body: unknown): Promise<T> {
   return (await res.json()) as T;
 }
 
-// Text ki list ka embedding (product save ke liye DOCUMENT, user ke sawal ke liye QUERY).
+// Text ko numbers (embedding) me badlo: product ke liye DOCUMENT, user ke sawal ke liye QUERY.
 export async function embedTexts(texts: string[], task: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY") {
   const model = `models/${env.GEMINI_EMBED_MODEL}`;
   const data = await callGemini<{ embeddings: { values: number[] }[] }>(
@@ -42,10 +44,10 @@ export async function embedTexts(texts: string[], task: "RETRIEVAL_DOCUMENT" | "
       })),
     },
   );
-  return data.embeddings.map((e) => e.values);
+  return data.embeddings.map((embedding) => embedding.values);
 }
 
-// Chat ka ek round: model ya to text dega ya function call.
+// Gemini se ek baar poochho: jawab me ya to text aayega ya kisi function ko bulane ki maang.
 export async function chatOnce(system: string, contents: GeminiContent[], tools: GeminiTool[]) {
   const data = await callGemini<{ candidates?: { content?: { parts?: GeminiPart[] } }[] }>(
     `${env.GEMINI_CHAT_MODEL}:generateContent`,

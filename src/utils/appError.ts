@@ -1,4 +1,4 @@
-// Aisi error jiska message user ko dikhana hai (jaise "Order not found").
+// Aisi error jiska message user ko dikhana hai, saath me status code (jaise 404 "Order not found").
 export class AppError extends Error {
   statusCode: number;
 

@@ -62,7 +62,7 @@ router.use(authCheck, roleCheck("ADMIN", "SUPER_ADMIN"));
 // Uploads: 10 image tak (zyada RAM leta hai, isliye apni limit).
 router.post(
   "/uploads",
-  rateLimiter({ bucket: "admin-upload", windowSec: 60, max: 30 }),
+  rateLimiter({ name: "admin-upload", seconds: 60, maxRequests: 30 }),
   upload.array("images", 10),
   uploadImages,
 );
