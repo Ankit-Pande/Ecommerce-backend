@@ -2,8 +2,9 @@ import { z } from "zod";
 import { prisma } from "../config/db";
 import { GeminiTool } from "../integration/gemini";
 import { AppError } from "../utils/appError";
+import { ACTIVE_CATEGORY, productCard } from "../utils/price";
 import { uuid } from "../validation/common";
-import { Card, findProducts, readQuestion } from "./assistant.search";
+import { Card, CARD_FIELDS, findProducts, readQuestion, toCard } from "./assistant.search";
 import { adminService } from "./admin.service";
 import { cartService } from "./cart.service";
 import { orderService } from "./order.service";
@@ -24,7 +25,7 @@ const shortId = (id: string) => id.slice(0, 8).toUpperCase();
 const LOW_STOCK_AT = 5;
 
 // AI ko product ki chhoti jaankari do (id ke saath, taaki cart me daal sake).
-const shortInfo = (card: Card) => ({
+const shortInfo = (card: ReturnType<typeof productCard>) => ({
   id: card.id,
   name: card.name,
   priceRupees: rupees(card.finalPricePaise),
@@ -52,6 +53,42 @@ const TOOLS: Record<string, Tool> = {
     async run(_user, args) {
       const { products } = await findProducts(await readQuestion(args.query), 0);
       return { data: products.map(shortInfo), products };
+    },
+  },
+
+  get_product: {
+    declaration: {
+      name: "get_product",
+      description: "Full details and latest reviews of one product (id from search_products or get_cart).",
+      parameters: toolInputs({ productId: { type: "STRING" } }, ["productId"]),
+    },
+    schema: z.object({ productId: uuid }),
+    async run(_user, args) {
+      const product = await prisma.product.findFirst({
+        where: { id: args.productId, isActive: true, category: ACTIVE_CATEGORY },
+        select: {
+          ...CARD_FIELDS,
+          description: true,
+          color: true,
+          brand: { select: { name: true } },
+          category: { select: { name: true } },
+          reviews: { select: { rating: true, comment: true }, orderBy: { createdAt: "desc" }, take: 3 },
+        },
+      });
+      if (!product) throw new AppError("Product not found", 404);
+      const card = toCard(product);
+      return {
+        data: {
+          ...shortInfo(card),
+          brand: product.brand?.name,
+          category: product.category.name,
+          color: product.color,
+          description: product.description.slice(0, 400),
+          ratingCount: card.rating.count,
+          latestReviews: product.reviews,
+        },
+        products: [card],
+      };
     },
   },
 
@@ -161,6 +198,38 @@ const TOOLS: Record<string, Tool> = {
         take: 5,
       });
       return { data: rows.map(({ sellPaise, ...row }) => ({ ...row, priceRupees: rupees(sellPaise) })) };
+    },
+  },
+
+  admin_orders: {
+    adminOnly: true,
+    declaration: {
+      name: "admin_orders",
+      description:
+        "Admin: latest 10 orders. status CONFIRMED = to ship, PENDING = payment pending; needsReview=true = orders to check.",
+      parameters: toolInputs({
+        status: { type: "STRING", enum: ["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"] },
+        needsReview: { type: "BOOLEAN" },
+      }),
+    },
+    schema: z.object({
+      status: z.enum(["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"]).optional(),
+      needsReview: z.boolean().optional(),
+    }),
+    async run(_user, args) {
+      const { items } = await adminService.listOrders({ ...args, limit: 10 });
+      return {
+        data: items.map((order) => ({
+          orderId: order.id,
+          orderNo: shortId(order.id),
+          status: order.status,
+          payment: `${order.paymentMethod} ${order.paymentStatus}`,
+          totalRupees: rupees(order.totalPaise),
+          date: order.createdAt.toISOString().slice(0, 10),
+          customer: order.shipName,
+          needsReview: order.needsReview,
+        })),
+      };
     },
   },
 
