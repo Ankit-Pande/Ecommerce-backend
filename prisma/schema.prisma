@@ -172,6 +172,9 @@ model Product {
   // AI search ka data (Gemini embedding). Naye "migrate dev" me "DROP INDEX Product_embedding_idx" aaye to wo line hata dena.
   embedding Unsupported("halfvec(768)")?
 
+  // AI search ke liye naam aur rang ke shabd (DB khud banata hai, full-text index ke saath).
+  searchText Unsupported("tsvector")? @default(dbgenerated("to_tsvector('english'::regconfig, ((COALESCE(name, ''::text) || ' '::text) || COALESCE(color, ''::text)))"))
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -191,6 +194,7 @@ model Product {
   @@index([name(ops: raw("gin_trgm_ops"))], type: Gin)
   @@index([description(ops: raw("gin_trgm_ops"))], type: Gin)
   @@index([color(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([searchText], type: Gin)
 }
 
 model Cart {

@@ -2,7 +2,7 @@ import { redis, countInWindow } from "../config/redis";
 import { logger } from "../config/winston";
 import { chatOnce, GeminiContent, GeminiPart, geminiReady } from "../integration/gemini";
 import { AppError } from "../utils/appError";
-import { Card, findProducts, hasSomethingToSearch, PAGE_SIZE, readQuestion } from "./assistant.search";
+import { answersWho, Card, findProducts, hasSomethingToSearch, PAGE_SIZE, readQuestion } from "./assistant.search";
 import { findTool, toolsFor, ToolUser } from "./assistant.tools";
 
 type Message = { role: "user" | "assistant"; content: string };
@@ -48,9 +48,7 @@ function currentQuestion(messages: Message[]): string {
   const last = messages[messages.length - 1].content;
   const asked = messages[messages.length - 2];
   const before = messages[messages.length - 3];
-  const answer = readQuestion(last);
-  const answeredWho = Boolean(answer.gender || answer.ageGroup);
-  if (answeredWho && asked && ASKED_WHO_FOR.test(asked.content) && before?.role === "user") {
+  if (answersWho(last) && asked && ASKED_WHO_FOR.test(asked.content) && before?.role === "user") {
     return `${before.content} ${last}`;
   }
   return last;
@@ -162,13 +160,13 @@ export const assistantService = {
 
     const isAction = ACTION_WORDS.test(question);
     if (!isAction) {
-      const q = readQuestion(question);
+      const q = await readQuestion(question);
       if (hasSomethingToSearch(q)) {
         const found = await findProducts(q, input.page);
         if (found.askWho) return { reply: ASK_WHO };
         if (found.products.length > 0) {
           return {
-            reply: input.page > 0 ? "Ye rahe aur products:" : "Ye products mile:",
+            reply: found.reply,
             products: found.products,
             hasMore: found.hasMore,
           };
