@@ -1,4 +1,5 @@
 import { env } from "../config/env";
+import { logger } from "../config/winston";
 import { AppError } from "../utils/appError";
 
 const BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
@@ -14,7 +15,7 @@ export type GeminiPart = {
 export type GeminiContent = { role: "user" | "model"; parts: GeminiPart[] };
 export type GeminiTool = { name: string; description: string; parameters?: Record<string, unknown> };
 
-// Gemini API ko request bhejo; 15 second me jawab na aaye to chhod do, limit (429) par saaf message.
+// Gemini API ko request bhejo; 15 second me jawab na aaye to chhod do, limit (429) par saaf message, baaki galti log me.
 async function callGemini<T>(path: string, body: unknown): Promise<T> {
   if (!env.GEMINI_API_KEY) throw new AppError("AI assistant is not configured", 503);
   const res = await fetch(`${BASE_URL}/${path}`, {
@@ -24,7 +25,10 @@ async function callGemini<T>(path: string, body: unknown): Promise<T> {
     signal: AbortSignal.timeout(15000),
   });
   if (res.status === 429) throw new AppError("AI is busy right now, please try again in a minute", 429);
-  if (!res.ok) throw new AppError(`AI service error (${res.status})`, 503);
+  if (!res.ok) {
+    logger.warn("Gemini request failed", { path, status: res.status, body: (await res.text()).slice(0, 300) });
+    throw new AppError(`AI service error (${res.status})`, 503);
+  }
   return (await res.json()) as T;
 }
 
@@ -53,7 +57,7 @@ export async function chatOnce(system: string, contents: GeminiContent[], tools:
       systemInstruction: { parts: [{ text: system }] },
       contents,
       ...(tools.length > 0 && { tools: [{ functionDeclarations: tools }] }),
-      generationConfig: { temperature: 0.2, maxOutputTokens: 400, thinkingConfig: { thinkingBudget: 0 } },
+      generationConfig: { maxOutputTokens: 1024 },
     },
   );
   return data.candidates?.[0]?.content?.parts ?? [];

@@ -35,7 +35,8 @@ const WHO_WORDS: { pattern: RegExp; label: string; gender?: string[]; ageGroup: 
   { pattern: /\b(boys?|ladk[ae]|beta)\b/, label: "Boys", gender: ["Men", "Unisex"], ageGroup: "Kids" },
   { pattern: /\b(girls?|ladki|ladkiyon|beti)\b/, label: "Girls", gender: ["Women", "Unisex"], ageGroup: "Kids" },
   {
-    pattern: /\b(kids?|child|children|baby|babies|ba(?:c|ch)+(?:a|e|on|o)|toddlers?)\b/,
+    pattern:
+      /\b(kids?|child|children|baby|babies|ba(?:c|ch)+(?:a|e|on|o)|toddlers?|(?:[1-9]|1[0-2])\s*(?:years?|yrs?|saal|sal)\s*(?:old|ka|ki|ke))\b/,
     label: "Kids",
     ageGroup: "Kids",
   },
