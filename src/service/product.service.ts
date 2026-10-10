@@ -13,6 +13,7 @@ export const productService = {
           ...CARD_SELECT,
           description: true,
           color: true,
+          specs: true,
           category: {
             select: {
               id: true,
@@ -26,12 +27,13 @@ export const productService = {
       });
       if (!found) return null;
 
-      const { description, images, color, category, brand } = found;
+      const { description, images, color, specs, category, brand } = found;
       return {
         ...productCard(found),
         description,
         images,
         color,
+        specs,
         category,
         brand: brand?.isActive ? { id: brand.id, name: brand.name, slug: brand.slug, logo: brand.logo } : null,
       };

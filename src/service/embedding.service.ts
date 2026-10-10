@@ -50,7 +50,7 @@ export function productFilterSql(filters: SearchFilters): Prisma.Sql[] {
 
 const toVector = (values: number[]) => `[${values.join(",")}]`;
 
-// Product ka text jisse meaning banta hai: naam, brand, category, kiske liye, colour, description.
+// Product ka text jisse meaning banta hai: naam, brand, category, kiske liye, colour, specs, description.
 async function productTexts(ids: string[]) {
   const rows = await prisma.product.findMany({
     where: { id: { in: ids } },
@@ -61,6 +61,7 @@ async function productTexts(ids: string[]) {
       color: true,
       gender: true,
       ageGroup: true,
+      specs: true,
       brand: { select: { name: true } },
       category: { select: { name: true, parent: { select: { name: true } } } },
     },
@@ -75,6 +76,10 @@ async function productTexts(ids: string[]) {
       p.gender,
       p.ageGroup,
       p.color,
+      p.specs &&
+        Object.entries(p.specs)
+          .map(([key, value]) => `${key} ${value}`)
+          .join(", "),
       p.description.slice(0, 500),
     ]
       .filter(Boolean)
@@ -121,9 +126,14 @@ export const embeddingService = {
     return rows.length;
   },
 
-  // Admin ke save ke baad peeche-peeche embedding banao; fail ho to bas log (har ghante wala kaam baad me bana dega).
+  // Admin ke save ke baad peeche-peeche embedding banao; fail ho to purana embedding hatao, har ghante wala kaam naya bana dega.
   syncInBackground(ids: string[]) {
-    this.syncProducts(ids).catch((error) => logger.error("Embedding sync failed", { error, count: ids.length }));
+    this.syncProducts(ids).catch(async (error) => {
+      logger.error("Embedding sync failed", { error, count: ids.length });
+      await prisma.$executeRaw`UPDATE "Product" SET "embedding" = NULL WHERE "id" IN (${Prisma.join(ids)})`.catch(
+        () => null,
+      );
+    });
   },
 
   // Meaning se milte chalu products ki ids, sabse paas wale pehle.

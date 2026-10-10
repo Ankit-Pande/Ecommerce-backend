@@ -129,9 +129,13 @@ async function getVocabulary(): Promise<Vocabulary> {
   });
 }
 
-// Naam ke saare shabd sawal me hon to wo naam match hai.
+// Naam ke saare shabd sawal me hon, ya jude hue likhe hon ("tshirt" = T-Shirt, "smartwatch" = Smart Watch), to naam match hai.
 const isMentioned = (nameWords: string[], asked: Set<string>) =>
-  nameWords.length > 0 && nameWords.every((word) => asked.has(word));
+  nameWords.length > 0 && (nameWords.every((word) => asked.has(word)) || asked.has(nameWords.join("")));
+
+// Naam ke shabd (aur unka jude hue roop) "use ho gaye", taaki dobara search ke shabd na banein.
+const markUsed = (used: Set<string>, nameWords: string[]) =>
+  [...nameWords, nameWords.join("")].forEach((word) => used.add(word));
 
 // Category ke saath uski andar wali categories bhi (jaise "Footwear" ke saath "Sneakers").
 function withChildren(vocabulary: Vocabulary, ids: string[]): string[] {
@@ -168,7 +172,7 @@ export async function readQuestion(question: string): Promise<Question> {
 
   const allWords = new Set(wordsOf(text));
   const brands = vocabulary.brands.filter((brand) => isMentioned(wordsOf(brand.name), allWords));
-  brands.forEach((brand) => wordsOf(brand.name).forEach((word) => used.add(word)));
+  brands.forEach((brand) => markUsed(used, wordsOf(brand.name)));
 
   const who = WHO_WORDS.find((item) => item.pattern.test(text));
   const sort = SORT_WORDS.find((item) => item.pattern.test(text));
@@ -179,14 +183,18 @@ export async function readQuestion(question: string): Promise<Question> {
 
   const asked = new Set(wordsOf(text).filter((word) => !used.has(word)));
   const colors = vocabulary.colors.filter((color) => isMentioned(wordsOf(color), asked));
-  colors.forEach((color) => wordsOf(color).forEach((word) => used.add(word)));
+  colors.forEach((color) => markUsed(used, wordsOf(color)));
 
   const categories = vocabulary.categories
     .map((category) => ({ ...category, key: wordsOf(category.name).filter((word) => !PERSON_WORDS.has(word)) }))
     .filter((category) => isMentioned(category.key, asked));
-  const mostExact = Math.max(0, ...categories.map((category) => category.key.length));
-  const chosen = categories.filter((category) => category.key.length === mostExact);
-  chosen.forEach((category) => category.key.forEach((word) => used.add(word)));
+  const chosen = categories.filter(
+    (category) =>
+      !categories.some(
+        (other) => other.key.length > category.key.length && category.key.every((word) => other.key.includes(word)),
+      ),
+  );
+  chosen.forEach((category) => markUsed(used, category.key));
 
   const leftover = [...new Set(text.match(/[a-z0-9ऀ-ॿ]+(?:\.\d+)?/g))]
     .filter((word) => (word.length >= 2 || /^\d$/.test(word)) && !FILLER_WORDS.has(word) && !used.has(baseWord(word)))
@@ -215,7 +223,7 @@ export async function readQuestion(question: string): Promise<Question> {
       vocabulary,
       chosen.map((category) => category.id),
     );
-    q.labels.category = categoryLabel(chosen[0].name);
+    q.labels.category = [...new Set(chosen.map((category) => categoryLabel(category.name)))].join(", ");
   }
   if (who) {
     if (who.gender) q.gender = who.gender;
@@ -296,7 +304,7 @@ function wordMatch(word: Word): Prisma.Sql {
   return Prisma.sql`(${inName} OR ${inCategory(word)})`;
 }
 
-// DB search: jitne zyada shabd mile utna upar, phir category wale (1-2 shabd ho to sab, zyada ho to aadhe); kiske liye na bola ho to Men, Women, Kids baari-baari (Redis cache).
+// DB search: jitne zyada shabd mile utna upar, phir category wale (1-2 shabd ho to sab, zyada ho to aadhe); har category (aur kiske liye na bola ho to Men, Women, Kids) ke baari-baari (Redis cache).
 async function dbMatches(q: Question): Promise<Card[]> {
   const sort = sortOf(q);
   const key = hashOf({ ...q, meaning: undefined, labels: undefined, pageSize: undefined });
@@ -318,11 +326,9 @@ async function dbMatches(q: Question): Promise<Card[]> {
       }
       order.unshift(Prisma.sql`(${hits}) DESC`);
     }
-    if (!q.gender && !q.ageGroup) {
-      order.unshift(
-        Prisma.sql`ROW_NUMBER() OVER (PARTITION BY p."gender", p."ageGroup" ORDER BY ${Prisma.join(order, ", ")})`,
-      );
-    }
+    const groups =
+      q.gender || q.ageGroup ? Prisma.sql`p."categoryId"` : Prisma.sql`p."categoryId", p."gender", p."ageGroup"`;
+    order.unshift(Prisma.sql`ROW_NUMBER() OVER (PARTITION BY ${groups} ORDER BY ${Prisma.join(order, ", ")})`);
     const rows = await prisma.$queryRaw<{ id: string }[]>`
       SELECT p."id" FROM "Product" p
       WHERE ${Prisma.join(where, " AND ")}
@@ -344,10 +350,13 @@ function sortCards(cards: Card[], sort: Sort): Card[] {
   return [...cards].sort((a, b) => score[sort](a) - score[sort](b));
 }
 
-// Meaning wali search (description bhi samajhti hai); 3 akshar ka koi shabd na ho ya Gemini limit ho to khaali.
+// Bache shabd khud kisi category ke na hon (party, wedding), tabhi category pakki hai; "laptop bag" me "bag" ho to nahi.
+const isSureCategory = (q: Question) => Boolean(q.categoryIds) && !q.words.some((word) => word.categoryIds.length > 0);
+
+// Meaning wali search (description bhi samajhti hai), category pakki ho to usi ke andar; 3 akshar ka shabd na ho ya Gemini limit ho to khaali.
 async function meaningMatches(q: Question): Promise<Card[]> {
   if (!q.words.some((word) => /[a-zऀ-ॿ]{3}/.test(word.text))) return [];
-  const filters = { ...q, categoryIds: undefined };
+  const filters = isSureCategory(q) ? q : { ...q, categoryIds: undefined };
   const cards = await getOrSetCache(`ai:meaning:${hashOf(filters)}`, CACHE_SECONDS, async () => {
     const ids = await embeddingService.searchIds(q.meaning, filters, MAX_RESULTS);
     return cardsInOrder(ids);
@@ -358,13 +367,16 @@ async function meaningMatches(q: Question): Promise<Card[]> {
   return sortCards(cards, sortOf(q));
 }
 
-// Search ka kram: DB (shabd + filter), phir meaning wali search, phir category ho to usi category ke products (party, wedding jaise shabd chhod kar).
-async function searchAll(q: Question): Promise<{ cards: Card[]; similar: boolean }> {
+// Search ka kram: DB (shabd + filter), phir meaning wali search; phir category pakki ho to usi ke products (party, wedding chhod kar), warna bina category ke shabd ("laptop bag" -> bags).
+async function searchAll(q: Question): Promise<{ cards: Card[]; similar: boolean; used: Question }> {
   const exact = await dbMatches(q);
-  if (exact.length > 0 || q.words.length === 0) return { cards: exact, similar: false };
+  if (exact.length > 0 || q.words.length === 0) return { cards: exact, similar: false, used: q };
   const byMeaning = await meaningMatches(q);
-  if (byMeaning.length > 0 || !q.categoryIds) return { cards: byMeaning, similar: true };
-  return { cards: await dbMatches({ ...q, words: [] }), similar: true };
+  if (byMeaning.length > 0 || !q.categoryIds) return { cards: byMeaning, similar: true, used: q };
+  if (isSureCategory(q)) return { cards: await dbMatches({ ...q, words: [] }), similar: true, used: q };
+  const { category: _category, ...labels } = q.labels;
+  const withoutCategory = { ...q, categoryIds: undefined, labels };
+  return { cards: await dbMatches(withoutCategory), similar: true, used: withoutCategory };
 }
 
 // Results me Men aur Women dono (ya Kids aur bade dono) hain?
@@ -377,11 +389,12 @@ function isMixed(cards: Card[]): boolean {
 // Ek page ke product (5, ya zyada maange to 10); kiske liye na bola ho aur results mix hon to askWho (Men/Women/Kids button).
 export async function findProducts(q: Question, page: number) {
   const size = q.pageSize ?? PAGE_SIZE;
-  const { cards, similar } = await searchAll(q);
+  const { cards, similar, used } = await searchAll(q);
   return {
     products: cards.slice(page * size, (page + 1) * size),
     hasMore: cards.length > (page + 1) * size,
     askWho: page === 0 && !q.gender && !q.ageGroup && isMixed(cards),
     similar,
+    labels: used.labels,
   };
 }
