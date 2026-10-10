@@ -36,6 +36,16 @@ export async function createRazorpayOrder(amountPaise: number, receipt: string):
   }
 }
 
+// Popup ke baad aaya payment asli hai? Signature check karo, phir Razorpay se payment ki detail lao (amount ke liye).
+export async function fetchVerifiedPayment(razorpayOrderId: string, paymentId: string, signature: string) {
+  if (!signatureMatches(env.RAZORPAY_KEY_SECRET, `${razorpayOrderId}|${paymentId}`, signature)) {
+    throw new AppError("Payment could not be verified", 400);
+  }
+  const payment = await getRazorpay().payments.fetch(paymentId);
+  if (payment.status !== "captured") throw new AppError("Payment is still processing. Please check again soon.", 409);
+  return { id: payment.id, order_id: razorpayOrderId, amount: Number(payment.amount), currency: payment.currency };
+}
+
 // Webhook ka signature check karo; isi se nakli "payment ho gaya" message rukta hai.
 export function verifyWebhookSignature(rawBody: Buffer, signature: string): boolean {
   return signatureMatches(env.RAZORPAY_WEBHOOK_SECRET, rawBody, signature);

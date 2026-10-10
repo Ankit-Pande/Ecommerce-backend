@@ -17,6 +17,16 @@ export const checkoutSchema = z.object({
 
 export const orderIdSchema = z.object({ params: idParams });
 
+export const verifyPaymentSchema = z.object({
+  params: idParams,
+  body: z
+    .object({
+      razorpayPaymentId: z.string().regex(/^pay_[A-Za-z0-9]{6,30}$/),
+      razorpaySignature: z.string().regex(/^[a-f0-9]{64}$/),
+    })
+    .strict(),
+});
+
 export const listOrderSchema = z.object({
   query: z.object({
     status: commaList(orderStatus, 5).optional(),

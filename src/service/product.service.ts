@@ -43,20 +43,6 @@ export const productService = {
     return product;
   },
 
-  // Kai slug ke product ek saath, usi kram me (guest ka recently viewed).
-  async getManyBySlugs(slugList: string[]) {
-    const slugs = [...new Set(slugList)];
-    const cards = await getOrSetCache(`products:${[...slugs].sort().join(",")}`, CACHE_SECONDS, async () => {
-      const rows = await prisma.product.findMany({
-        where: { slug: { in: slugs }, isActive: true, category: ACTIVE_CATEGORY },
-        select: CARD_SELECT,
-      });
-      return rows.map(productCard);
-    });
-    const cardBySlug = new Map(cards.map((card) => [card.slug, card]));
-    return slugs.map((slug) => cardBySlug.get(slug)).filter((card) => card !== undefined);
-  },
-
   // Usi category ke 8 aur products.
   async getRelated(slug: string) {
     const related = await getOrSetCache(`related:${slug}`, CACHE_SECONDS, async () => {

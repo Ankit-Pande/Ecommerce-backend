@@ -135,7 +135,7 @@ function commonFilters(query: {
   return filters;
 }
 
-// Galat spelling wali search ("samsng"): naam, brand aur category me milte-julte products; 2 second se zyada lage to ruk jaye.
+// Galat spelling wali search ("samsng"): naam, brand aur category (ya uski parent) me milte-julte products; 2 second se zyada lage to ruk jaye.
 async function similarSpellingIds(text: string): Promise<string[]> {
   const [, rows] = await prisma.$transaction([
     prisma.$executeRaw`SET LOCAL statement_timeout = '2s'`,
@@ -147,7 +147,9 @@ async function similarSpellingIds(text: string): Promise<string[]> {
       WHERE p."isActive" = true AND p."brandId" IN (SELECT "id" FROM "Brand" WHERE "name" % ${text})
       UNION
       SELECT p."id", similarity(p."name", ${text}) FROM "Product" p
-      WHERE p."isActive" = true AND p."categoryId" IN (SELECT "id" FROM "Category" WHERE "name" % ${text})
+      WHERE p."isActive" = true AND p."categoryId" IN (
+        SELECT c."id" FROM "Category" c LEFT JOIN "Category" pc ON pc."id" = c."parentId"
+        WHERE c."name" % ${text} OR pc."name" % ${text})
       ORDER BY 2 DESC
       LIMIT 50`,
   ]);

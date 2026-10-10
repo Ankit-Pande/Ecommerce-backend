@@ -1,12 +1,8 @@
 import { z } from "zod";
-import { commaList, pageParams, slug } from "./common";
+import { pageParams, slug } from "./common";
 
 export const productSlugSchema = z.object({
   params: z.object({ slug }),
-});
-
-export const batchProductSchema = z.object({
-  query: z.object({ slugs: commaList(slug, 10) }),
 });
 
 export const listReviewSchema = z.object({

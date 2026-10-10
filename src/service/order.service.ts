@@ -1,7 +1,7 @@
 import { CancelledBy, Order, OrderStatus, PaymentMethod, Prisma } from "@prisma/client";
 import { prisma, lockUser } from "../config/db";
 import { env } from "../config/env";
-import { createRazorpayOrder } from "../integration/razorpay";
+import { createRazorpayOrder, fetchVerifiedPayment } from "../integration/razorpay";
 import { AppError } from "../utils/appError";
 import { clearStoreCache } from "../config/cache";
 import { pageQuery, paginate } from "../utils/paginate";
@@ -254,6 +254,15 @@ export const orderService = {
       order.paymentExpiresAt > new Date();
     if (!payable) throw new AppError("Order is not available for payment", 409);
     return checkoutResponse(order);
+  },
+
+  // Popup me payment hote hi order pakka karo (laptop par webhook nahi aata); webhook baad me aaye to dobara kuch nahi hota.
+  async verifyPayment(userId: string, orderId: string, paymentId: string, signature: string) {
+    const order = await prisma.order.findFirst({ where: { id: orderId, userId }, select: { razorpayOrderId: true } });
+    if (!order?.razorpayOrderId) throw new AppError("Order not found", 404);
+    const payment = await fetchVerifiedPayment(order.razorpayOrderId, paymentId, signature);
+    await this.handlePaymentCaptured(`verify:${payment.id}`, payment);
+    return prisma.order.findUniqueOrThrow({ where: { id: orderId }, select: { status: true, paymentStatus: true } });
   },
 
   // Razorpay ne bataya payment ho gayi: paise aur time sahi to order CONFIRM; late ya galat amount par order cancel aur admin refund kare.

@@ -9,13 +9,6 @@ export const getProduct = asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: product });
 });
 
-// Kai products ek saath (recently viewed ke liye).
-export const getProductsBySlugs = asyncHandler(async (req: Request, res: Response) => {
-  const { slugs } = req.query as unknown as { slugs: string[] };
-  const products = await productService.getManyBySlugs(slugs);
-  res.json({ success: true, data: products });
-});
-
 // Isi category ke aur products.
 export const getRelatedProducts = asyncHandler(async (req: Request, res: Response) => {
   const products = await productService.getRelated(req.params.slug);

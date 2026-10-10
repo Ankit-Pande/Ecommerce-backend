@@ -138,6 +138,9 @@ const isMentioned = (nameWords: string[], asked: Set<string>) =>
 const markUsed = (used: Set<string>, nameWords: string[]) =>
   [...nameWords, nameWords.join("")].forEach((word) => used.add(word));
 
+// Category ka shabd wahi hai, ya jude shabd ka aakhri hissa ("phone" = "smartphone", "watch" = "smartwatch").
+const isSameWord = (name: string, word: string) => name === word || (word.length >= 4 && name.endsWith(word));
+
 // Category ke saath uski andar wali categories bhi (jaise "Footwear" ke saath "Sneakers").
 function withChildren(vocabulary: Vocabulary, ids: string[]): string[] {
   const children = vocabulary.categories.filter((category) => category.parentId && ids.includes(category.parentId));
@@ -205,7 +208,7 @@ export async function readQuestion(question: string): Promise<Question> {
     categoryIds: withChildren(
       vocabulary,
       vocabulary.categories
-        .filter((category) => wordsOf(category.name).includes(baseWord(word)))
+        .filter((category) => wordsOf(category.name).some((name) => isSameWord(name, baseWord(word))))
         .map((category) => category.id),
     ),
   }));
