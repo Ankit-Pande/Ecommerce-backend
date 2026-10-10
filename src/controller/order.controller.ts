@@ -18,6 +18,18 @@ export const retryPayment = asyncHandler(async (req: Request, res: Response) => 
   res.json({ success: true, data: result });
 });
 
+// Popup ke baad payment pakka karo.
+export const verifyPayment = asyncHandler(async (req: Request, res: Response) => {
+  const { razorpayPaymentId, razorpaySignature } = req.body;
+  const result = await orderService.verifyPayment(
+    req.user!.userId,
+    req.params.id,
+    razorpayPaymentId,
+    razorpaySignature,
+  );
+  res.json({ success: true, data: result });
+});
+
 // User ke orders.
 export const listOrders = asyncHandler(async (req: Request, res: Response) => {
   const { status, cursor, limit } = req.query as unknown as {

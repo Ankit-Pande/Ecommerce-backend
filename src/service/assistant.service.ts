@@ -52,8 +52,8 @@ const REPLIES = {
     en: "Hourly search limit reached. Please log in to ask more.",
   },
   help: {
-    hi: "Main products dhoondhne me madad karta hoon. Likhiye jaise: 'red shoes 2000 ke andar', 'women kurta', 'samsung phone'.",
-    en: "I can help you find products. Try: 'red shoes under 2000', 'women kurta', 'samsung phone'.",
+    hi: "Main products dhoondhne me madad karta hoon. Likhiye jaise: 'phone 20000 ke andar', 'women kurta', 'gaming laptop'.",
+    en: "I can help you find products. Try: 'phone under 20000', 'women kurta', 'gaming laptop'.",
   },
   login: { hi: "Cart, orders aur profile ke liye pehle login karein.", en: "Please log in for cart, orders and profile." },
   userLimit: {
@@ -149,9 +149,11 @@ async function productAnswer(q: Question, page: number, lang: Lang): Promise<Cha
   return { reply, products: found.products, hasMore: found.hasMore, askWho: found.askWho };
 }
 
-// Kuch na mila to kya bolein: shabd pata hon to unka naam lo.
-const notFoundText = (q: Question, lang: Lang) =>
-  q.labels.words ? REPLIES.notFoundWords[lang].replace("{words}", q.labels.words) : REPLIES.notFound[lang];
+// Kuch na mila to kya bolein: samjhi hui baatein (party · Shirts · Women) pata hon to unka naam lo.
+function notFoundText(q: Question, lang: Lang): string {
+  const asked = Object.values(q.labels).join(" · ");
+  return asked ? REPLIES.notFoundWords[lang].replace("{words}", asked) : REPLIES.notFound[lang];
+}
 
 // AI se sawal ko chhoti English search me badlo ("coding ke liye achha laptop" -> "laptop 16gb ram"); Redis me 7 din, shopping ka na ho to null.
 async function rewriteQuestion(text: string): Promise<string | null> {

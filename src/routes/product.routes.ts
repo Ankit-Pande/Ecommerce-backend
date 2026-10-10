@@ -1,23 +1,10 @@
 import { Router } from "express";
-import {
-  getProduct,
-  getProductsBySlugs,
-  getRelatedProducts,
-  listReviews,
-  saveReview,
-} from "../controller/product.controller";
+import { getProduct, getRelatedProducts, listReviews, saveReview } from "../controller/product.controller";
 import { authCheck } from "../middleware/authCheck";
 import { validate } from "../middleware/validate";
-import {
-  batchProductSchema,
-  listReviewSchema,
-  productSlugSchema,
-  saveReviewSchema,
-} from "../validation/product.validation";
+import { listReviewSchema, productSlugSchema, saveReviewSchema } from "../validation/product.validation";
 
 const router = Router();
-
-router.get("/batch", validate(batchProductSchema), getProductsBySlugs);
 
 router.get("/:slug", validate(productSlugSchema), getProduct);
 router.get("/:slug/related", validate(productSlugSchema), getRelatedProducts);
