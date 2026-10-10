@@ -154,6 +154,8 @@ model Product {
   gender   String?
   ageGroup String?
   images   String[]
+  // Product ki khaas baatein, jaise { "RAM": "16GB", "Battery": "5000mAh" } (search aur AI dono me kaam aati hain).
+  specs    Json?
 
   categoryId String
   category   Category @relation(fields: [categoryId], references: [id])
@@ -172,8 +174,8 @@ model Product {
   // AI search ka data (Gemini embedding). Naye "migrate dev" me "DROP INDEX Product_embedding_idx" aaye to wo line hata dena.
   embedding Unsupported("halfvec(768)")?
 
-  // AI search ke liye naam aur rang ke shabd (DB khud banata hai, full-text index ke saath).
-  searchText Unsupported("tsvector")? @default(dbgenerated("to_tsvector('english'::regconfig, ((COALESCE(name, ''::text) || ' '::text) || COALESCE(color, ''::text)))"))
+  // AI search ke liye naam, rang aur specs ke shabd (DB khud banata hai, full-text index ke saath).
+  searchText Unsupported("tsvector")? @default(dbgenerated("to_tsvector('english'::regconfig, ((((COALESCE(name, ''::text) || ' '::text) || COALESCE(color, ''::text)) || ' '::text) || COALESCE((specs)::text, ''::text)))"))
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

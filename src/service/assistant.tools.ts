@@ -8,6 +8,7 @@ import { Card, CARD_FIELDS, findProducts, readQuestion, toCard } from "./assista
 import { adminService } from "./admin.service";
 import { cartService } from "./cart.service";
 import { orderService } from "./order.service";
+import { userService } from "./user.service";
 
 export type ToolUser = { userId: string; isAdmin: boolean };
 type ToolOutput = { data: unknown; products?: Card[] };
@@ -89,6 +90,15 @@ const TOOLS: Record<string, Tool> = {
         },
         products: [card],
       };
+    },
+  },
+
+  get_profile: {
+    declaration: { name: "get_profile", description: "The user's own profile: name, phone, email." },
+    schema: z.object({}),
+    async run(user) {
+      const { name, phone, email, createdAt } = await userService.getMe(user.userId);
+      return { data: { name, phone, email, memberSince: createdAt.toISOString().slice(0, 10) } };
     },
   },
 
@@ -228,6 +238,29 @@ const TOOLS: Record<string, Tool> = {
           date: order.createdAt.toISOString().slice(0, 10),
           customer: order.shipName,
           needsReview: order.needsReview,
+        })),
+      };
+    },
+  },
+
+  admin_find_users: {
+    adminOnly: true,
+    declaration: {
+      name: "admin_find_users",
+      description: "Admin: find customers by phone number (full or part).",
+      parameters: toolInputs({ phone: { type: "STRING" } }, ["phone"]),
+    },
+    schema: z.object({ phone: z.string().regex(/^\d{3,10}$/) }),
+    async run(_user, args) {
+      const { items } = await adminService.listUsers({ q: args.phone, limit: 5 });
+      return {
+        data: items.map((row) => ({
+          userId: row.id,
+          name: row.name,
+          phone: row.phone,
+          role: row.role,
+          blocked: row.isBlocked,
+          joined: row.createdAt.toISOString().slice(0, 10),
         })),
       };
     },

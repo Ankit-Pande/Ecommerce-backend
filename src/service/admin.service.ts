@@ -20,6 +20,7 @@ type ProductInput = {
   color?: string | null;
   gender?: string | null;
   ageGroup?: string | null;
+  specs?: Record<string, string> | null;
   offerEndsAt?: Date | null;
   isTrending?: boolean;
   isFeatured?: boolean;
@@ -27,7 +28,16 @@ type ProductInput = {
 
 type Admin = { userId: string; role: Role };
 
-const SEARCH_TEXT_FIELDS = ["name", "description", "brandId", "categoryId", "color", "gender", "ageGroup"] as const;
+const SEARCH_TEXT_FIELDS = [
+  "name",
+  "description",
+  "brandId",
+  "categoryId",
+  "color",
+  "gender",
+  "ageGroup",
+  "specs",
+] as const;
 
 // Form ke data se DB me save karne wala product data banao.
 function toProductData(p: ProductInput, images: string[]) {
@@ -45,6 +55,7 @@ function toProductData(p: ProductInput, images: string[]) {
     color: p.color ? titleCase(p.color) : null,
     gender: p.gender,
     ageGroup: p.ageGroup,
+    specs: p.specs ?? Prisma.DbNull,
     isTrending: p.isTrending ?? false,
     isFeatured: p.isFeatured ?? false,
     images,
@@ -133,7 +144,7 @@ export const adminService = {
       });
       if (!current) throw new AppError("Product not found", 404);
 
-      const { pricePaise: newPrice, brandId, categoryId, color, ...rest } = data;
+      const { pricePaise: newPrice, brandId, categoryId, color, specs, ...rest } = data;
       const pricePaise = newPrice ?? current.pricePaise;
       const discountPercent = data.discountPercent ?? current.discountPercent;
       const offerEndsAt = data.offerEndsAt !== undefined ? data.offerEndsAt : current.offerEndsAt;
@@ -145,6 +156,7 @@ export const adminService = {
           pricePaise,
           sellPaise: finalPrice(pricePaise, discountPercent, offerEndsAt),
           ...(color !== undefined && { color: color ? titleCase(color) : null }),
+          ...(specs !== undefined && { specs: specs ?? Prisma.DbNull }),
           ...(categoryId && { category: { connect: { id: categoryId } } }),
           ...(brandId !== undefined && {
             brand: brandId ? { connect: { id: brandId } } : { disconnect: true },
@@ -206,6 +218,7 @@ export const adminService = {
         color: true,
         gender: true,
         ageGroup: true,
+        specs: true,
         images: true,
         categoryId: true,
         brandId: true,

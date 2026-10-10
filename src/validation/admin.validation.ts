@@ -13,6 +13,25 @@ const clearableText = (max: number) =>
 const clearableEnum = <T extends readonly [string, ...string[]]>(values: T) =>
   z.preprocess(emptyToNull, z.enum(values).nullable());
 
+// Specs form me "RAM: 16GB" jaisi lines (ya bulk me object) -> { RAM: "16GB" }; khaali bhejo to hat jaate hain.
+function readSpecs(value: unknown) {
+  if (typeof value !== "string") return value;
+  const lines = value
+    .split("\n")
+    .map((line) => line.split(":"))
+    .filter((parts) => parts.length >= 2);
+  if (lines.length === 0) return null;
+  return Object.fromEntries(lines.map(([key, ...rest]) => [key.trim(), rest.join(":").trim()]));
+}
+
+const specs = z.preprocess(
+  readSpecs,
+  z
+    .record(z.string().trim().min(1).max(40), z.string().trim().min(1).max(100))
+    .refine((value) => Object.keys(value).length <= 20, "Max 20 specs")
+    .nullable(),
+);
+
 const productFields = {
   name: z.string().trim().min(2).max(150),
   slug,
@@ -25,6 +44,7 @@ const productFields = {
   color: clearableText(30).optional(),
   gender: clearableEnum(GENDERS).optional(),
   ageGroup: clearableEnum(AGE_GROUPS).optional(),
+  specs: specs.optional(),
   offerEndsAt: z
     .preprocess(emptyToNull, z.coerce.date().nullable())
     .refine((date) => !date || date.getTime() > Date.now(), "offerEndsAt must be in the future")

@@ -45,14 +45,14 @@ export async function embedTexts(texts: string[], task: "RETRIEVAL_DOCUMENT" | "
   return data.embeddings.map((embedding) => embedding.values);
 }
 
-// Gemini se ek baar poochho: jawab me ya to text aayega ya kisi function ko bulane ki maang.
+// Gemini se ek baar poochho: jawab me ya to text aayega ya kisi function (tool diye hon to) ko bulane ki maang.
 export async function chatOnce(system: string, contents: GeminiContent[], tools: GeminiTool[]) {
   const data = await callGemini<{ candidates?: { content?: { parts?: GeminiPart[] } }[] }>(
     `${env.GEMINI_CHAT_MODEL}:generateContent`,
     {
       systemInstruction: { parts: [{ text: system }] },
       contents,
-      tools: [{ functionDeclarations: tools }],
+      ...(tools.length > 0 && { tools: [{ functionDeclarations: tools }] }),
       generationConfig: { temperature: 0.2, maxOutputTokens: 400, thinkingConfig: { thinkingBudget: 0 } },
     },
   );
