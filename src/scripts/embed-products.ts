@@ -4,20 +4,17 @@ import { geminiReady } from "../integration/gemini";
 import { embeddingService } from "../service/embedding.service";
 import { AppError } from "../utils/appError";
 
-const BATCH = 50;
 const WAIT_MS = 60000;
 
-// Jin products ka AI embedding nahi bana unka bana do; Gemini limit (429) par 1 minute ruk kar aage.
+// Jin products ka AI embedding nahi bana unka bana do (100-100 karke); Gemini limit (429) par 1 minute ruk kar aage.
 async function main() {
   if (!geminiReady) throw new Error("GEMINI_API_KEY is missing");
   let done = 0;
   for (;;) {
-    const rows = await prisma.$queryRaw<{ id: string }[]>`
-      SELECT "id" FROM "Product" WHERE "embedding" IS NULL AND "isActive" = true LIMIT ${BATCH}`;
-    if (rows.length === 0) break;
     try {
-      await embeddingService.syncProducts(rows.map((row) => row.id));
-      done += rows.length;
+      const count = await embeddingService.fillMissing();
+      if (count === 0) break;
+      done += count;
       console.log(`Embedded ${done} products`);
     } catch (error) {
       if (!(error instanceof AppError && error.statusCode === 429)) throw error;

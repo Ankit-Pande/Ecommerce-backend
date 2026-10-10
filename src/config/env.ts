@@ -49,6 +49,7 @@ const schema = z
     GEMINI_API_KEY: z.string().optional(),
     GEMINI_CHAT_MODEL: z.string().default("gemini-2.5-flash-lite"),
     GEMINI_EMBED_MODEL: z.string().default("gemini-embedding-001"),
+    AI_DAILY_LIMIT: z.coerce.number().int().positive().default(1000),
   })
   .refine(
     (v) => new Set([v.JWT_ACCESS_SECRET, v.JWT_REFRESH_SECRET, v.OTP_SECRET]).size === 3,

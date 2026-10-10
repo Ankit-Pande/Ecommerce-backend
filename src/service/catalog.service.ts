@@ -34,7 +34,7 @@ const PRICE_NUMBER = String.raw`(\d[\d,]*(?:\.\d+)?)\s*(k|hazar|lakh|lac)?\b`;
 const RUPEE_WORD = String.raw`(?:rs\.?|rupees?|rupaye|rupay)?`;
 const PRICE_RANGE = new RegExp(String.raw`${PRICE_NUMBER}\s*(?:-|to|se)\s*${PRICE_NUMBER}`, "i");
 const PRICE_BELOW = new RegExp(
-  String.raw`(?:under|below|upto|up to|less than|max)\s*(?:rs\.?|₹)?\s*${PRICE_NUMBER}|${PRICE_NUMBER}\s*${RUPEE_WORD}\s*(?:tak|ke andar|ke ander|andar|ander|ke neeche|se kam|me|mein)\b`,
+  String.raw`(?:under|below|upto|up to|less than|max)\s*(?:rs\.?|₹)?\s*${PRICE_NUMBER}|${PRICE_NUMBER}\s*${RUPEE_WORD}\s*(?:tak|(?:ke )?and[ae]r|(?:ke |se )?n(?:ee|i)chh?e|se kam|me|mein|ka|ki|ke)\b`,
   "i",
 );
 const PRICE_ABOVE = new RegExp(
@@ -53,7 +53,7 @@ function toRupees(digits: string, unit?: string): number {
   return value * unitValue;
 }
 
-// Search text se price nikalo ("under 2000", "500 me", "5000 se 20000"); ₹100 se kam ko price mat maano. Bacha text search ke liye do.
+// Search text se price nikalo ("under 2000", "10k ke niche", "1000 ka", "500 se upar"); ₹100 se kam ko price mat maano. Bacha text search ke liye do.
 export function readBudget(search: string): { text: string; minPrice?: number; maxPrice?: number } {
   const tidy = (text: string) =>
     text
@@ -71,12 +71,12 @@ export function readBudget(search: string): { text: string; minPrice?: number; m
     const high = toRupees(range[3], range[4]);
     budget = { minPrice: Math.min(low, high), maxPrice: Math.max(low, high) };
     priceText = range[0];
-  } else if (below) {
-    budget = { maxPrice: toRupees(below[1] ?? below[3], below[2] ?? below[4]) };
-    priceText = below[0];
   } else if (above) {
     budget = { minPrice: toRupees(above[1] ?? above[3], above[2] ?? above[4]) };
     priceText = above[0];
+  } else if (below) {
+    budget = { maxPrice: toRupees(below[1] ?? below[3], below[2] ?? below[4]) };
+    priceText = below[0];
   }
 
   if (!priceText || (budget.maxPrice ?? budget.minPrice ?? 0) < 100) return { text: tidy(search) };

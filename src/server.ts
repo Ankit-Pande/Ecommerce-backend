@@ -3,14 +3,16 @@ import { env } from "./config/env";
 import { connectDB, disconnectDB } from "./config/db";
 import { disconnectRedis } from "./config/redis";
 import { logger } from "./config/winston";
+import { embeddingService } from "./service/embedding.service";
 import { orderService } from "./service/order.service";
 import { productService } from "./service/product.service";
 import { tokenService } from "./service/token.service";
 
 const ONE_MINUTE = 60 * 1000;
-const ONE_DAY = 24 * 60 * ONE_MINUTE;
+const ONE_HOUR = 60 * ONE_MINUTE;
+const ONE_DAY = 24 * ONE_HOUR;
 
-// Server chalu karo: DB se jodo, har minute aur roz wale kaam chalao, band hote waqt sab aaram se band karo.
+// Server chalu karo: DB se jodo, har minute, har ghante aur roz wale kaam chalao, band hote waqt sab aaram se band karo.
 const start = async () => {
   await connectDB();
 
@@ -37,11 +39,20 @@ const start = async () => {
   cleanOldSessions();
   const dailyJob = setInterval(cleanOldSessions, ONE_DAY);
 
+  // Naye ya chhoote products ka AI embedding bana do (har ghante 100 tak).
+  const fillEmbeddings = async () => {
+    await embeddingService
+      .fillMissing()
+      .catch((error) => logger.warn("Embedding fill failed", { error: error.message }));
+  };
+  const hourlyJob = setInterval(fillEmbeddings, ONE_HOUR);
+
   // Band karte waqt: naye request roko, phir DB aur Redis band (10 second me na ho to zabardasti band).
   const shutdown = (signal: string) => {
     logger.info(`${signal} received, shutting down...`);
     clearInterval(everyMinuteJob);
     clearInterval(dailyJob);
+    clearInterval(hourlyJob);
     server.close(async () => {
       await disconnectDB();
       await disconnectRedis();

@@ -23,12 +23,11 @@ export const chatSchema = z.object({
         .array(message)
         .min(1)
         .max(30)
-        .transform((list) => list.slice(-10))
+        .transform((list) => list.slice(-20))
         .refine((list) => {
           const last = list[list.length - 1];
           return last.role === "user" && last.content.length >= 2 && last.content.length <= 500;
         }, "Question must be 2 to 500 characters"),
-      page: z.number().int().min(0).max(9).default(0),
       confirm: z.boolean().optional(),
     })
     .strict(),

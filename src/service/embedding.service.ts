@@ -19,9 +19,11 @@ export type SearchFilters = {
   maxPaise?: number;
   discount?: boolean;
   trending?: boolean;
+  featured?: boolean;
+  size?: string;
 };
 
-// AI search ke common filter (SQL me, product "p"): chalu product, brand, category, rang, gender, age, price, offer, trending.
+// AI search ke filter (SQL, product "p"): chalu product, brand, category, rang, kiske liye (phone jaise bina gender wale bhi), price, offer, trending, featured, size (naam me "UK 8", "Size 8" ya aakhir me "8").
 export function productFilterSql(filters: SearchFilters): Prisma.Sql[] {
   const where: Prisma.Sql[] = [
     Prisma.sql`p."isActive" = true`,
@@ -31,12 +33,18 @@ export function productFilterSql(filters: SearchFilters): Prisma.Sql[] {
   if (filters.brandIds) where.push(Prisma.sql`p."brandId" IN (${Prisma.join(filters.brandIds)})`);
   if (filters.categoryIds) where.push(Prisma.sql`p."categoryId" IN (${Prisma.join(filters.categoryIds)})`);
   if (filters.colors) where.push(Prisma.sql`p."color" IN (${Prisma.join(filters.colors)})`);
-  if (filters.gender) where.push(Prisma.sql`p."gender" IN (${Prisma.join(filters.gender)})`);
-  if (filters.ageGroup) where.push(Prisma.sql`p."ageGroup" IN (${Prisma.join(filters.ageGroup)})`);
+  if (filters.gender) where.push(Prisma.sql`(p."gender" IN (${Prisma.join(filters.gender)}) OR p."gender" IS NULL)`);
+  if (filters.ageGroup) {
+    where.push(Prisma.sql`(p."ageGroup" IN (${Prisma.join(filters.ageGroup)}) OR p."ageGroup" IS NULL)`);
+  }
   if (filters.minPaise !== undefined) where.push(Prisma.sql`p."sellPaise" >= ${filters.minPaise}`);
   if (filters.maxPaise !== undefined) where.push(Prisma.sql`p."sellPaise" <= ${filters.maxPaise}`);
   if (filters.discount) where.push(Prisma.sql`p."discountPercent" > 0`);
   if (filters.trending) where.push(Prisma.sql`p."isTrending" = true`);
+  if (filters.featured) where.push(Prisma.sql`p."isFeatured" = true`);
+  if (filters.size) {
+    where.push(Prisma.sql`p."name" ~* ${`(uk|size)\\s*${filters.size}\\M|\\m${filters.size}\\s*(uk)?\\s*$`}`);
+  }
   return where;
 }
 
@@ -104,7 +112,16 @@ export const embeddingService = {
     }
   },
 
-  // Admin ke save ke baad peeche-peeche embedding banao; fail ho to bas log (script baad me bana degi).
+  // Bina embedding wale chalu products (100 tak) ka embedding banao; kitne bane wo batao.
+  async fillMissing(): Promise<number> {
+    if (!geminiReady) return 0;
+    const rows = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "Product" WHERE "embedding" IS NULL AND "isActive" = true LIMIT ${BATCH_SIZE}`;
+    await this.syncProducts(rows.map((row) => row.id));
+    return rows.length;
+  },
+
+  // Admin ke save ke baad peeche-peeche embedding banao; fail ho to bas log (har ghante wala kaam baad me bana dega).
   syncInBackground(ids: string[]) {
     this.syncProducts(ids).catch((error) => logger.error("Embedding sync failed", { error, count: ids.length }));
   },
