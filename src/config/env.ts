@@ -47,7 +47,7 @@ const schema = z
     MAX_PENDING_ORDERS: z.coerce.number().int().min(1).max(10).default(2),
 
     GEMINI_API_KEY: z.string().optional(),
-    GEMINI_CHAT_MODEL: z.string().default("gemini-2.5-flash"),
+    GEMINI_CHAT_MODEL: z.string().default("gemini-2.5-flash-lite"),
     GEMINI_EMBED_MODEL: z.string().default("gemini-embedding-001"),
   })
   .refine(

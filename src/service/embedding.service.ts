@@ -9,7 +9,10 @@ const BATCH_SIZE = 100;
 const QUERY_VECTOR_SECONDS = 7 * 24 * 3600;
 const MAX_DISTANCE = 0.45;
 
-type SearchFilters = {
+export type SearchFilters = {
+  brandIds?: string[];
+  categoryIds?: string[];
+  colors?: string[];
   gender?: string[];
   ageGroup?: string[];
   minPaise?: number;
@@ -18,13 +21,16 @@ type SearchFilters = {
   trending?: boolean;
 };
 
-// AI search ke common filter (SQL me, product "p"): chalu product aur category, gender, age, price, offer, trending.
+// AI search ke common filter (SQL me, product "p"): chalu product, brand, category, rang, gender, age, price, offer, trending.
 export function productFilterSql(filters: SearchFilters): Prisma.Sql[] {
   const where: Prisma.Sql[] = [
     Prisma.sql`p."isActive" = true`,
     Prisma.sql`EXISTS (SELECT 1 FROM "Category" c LEFT JOIN "Category" pc ON pc."id" = c."parentId"
       WHERE c."id" = p."categoryId" AND c."isActive" = true AND (pc."id" IS NULL OR pc."isActive" = true))`,
   ];
+  if (filters.brandIds) where.push(Prisma.sql`p."brandId" IN (${Prisma.join(filters.brandIds)})`);
+  if (filters.categoryIds) where.push(Prisma.sql`p."categoryId" IN (${Prisma.join(filters.categoryIds)})`);
+  if (filters.colors) where.push(Prisma.sql`p."color" IN (${Prisma.join(filters.colors)})`);
   if (filters.gender) where.push(Prisma.sql`p."gender" IN (${Prisma.join(filters.gender)})`);
   if (filters.ageGroup) where.push(Prisma.sql`p."ageGroup" IN (${Prisma.join(filters.ageGroup)})`);
   if (filters.minPaise !== undefined) where.push(Prisma.sql`p."sellPaise" >= ${filters.minPaise}`);

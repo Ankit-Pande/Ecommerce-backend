@@ -50,7 +50,7 @@ const TOOLS: Record<string, Tool> = {
     },
     schema: z.object({ query: z.string().trim().min(2).max(120) }),
     async run(_user, args) {
-      const { products } = await findProducts(readQuestion(args.query), 0);
+      const { products } = await findProducts(await readQuestion(args.query), 0);
       return { data: products.map(shortInfo), products };
     },
   },
