@@ -55,7 +55,10 @@ const REPLIES = {
     hi: "Main products dhoondhne me madad karta hoon. Likhiye jaise: 'phone 20000 ke andar', 'women kurta', 'gaming laptop'.",
     en: "I can help you find products. Try: 'phone under 20000', 'women kurta', 'gaming laptop'.",
   },
-  login: { hi: "Cart, orders aur profile ke liye pehle login karein.", en: "Please log in for cart, orders and profile." },
+  login: {
+    hi: "Cart, orders aur profile ke liye pehle login karein.",
+    en: "Please log in for cart, orders and profile.",
+  },
   userLimit: {
     hi: "AI ki 5 ghante ki limit khatam ho gayi. Tab tak product search kar sakte hain.",
     en: "Your AI limit for 5 hours is used up. You can still search products.",
