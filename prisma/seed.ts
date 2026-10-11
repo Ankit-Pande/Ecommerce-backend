@@ -26,6 +26,9 @@ function random(): number {
 const pick = <T>(list: readonly T[]): T => list[Math.floor(random() * list.length)];
 const between = (min: number, max: number) => min + Math.floor(random() * (max - min + 1));
 const chance = (percent: number) => random() * 100 < percent;
+// List me se alag-alag "count" cheezein.
+const pickSome = <T>(list: readonly T[], count: number): T[] =>
+  [...list].sort(() => random() - 0.5).slice(0, Math.min(count, list.length));
 
 const slugify = (text: string) =>
   text
@@ -39,66 +42,75 @@ const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 10
 
 type Child = {
   name: string;
-  item: string; // product ke naam me jo shabd aayega
+  items: readonly string[]; // product ke naam me inme se ek shabd aayega
   price: [number, number];
-  variantName: string; // variant kis spec ka hai, jaise "Storage" ya "Size"
-  variants: readonly string[];
-  specs: Record<string, readonly string[]>; // baaki specs, har product me inme se ek-ek
+  variantName?: string; // electronics: variant naam me jata hai, jaise "128GB"
+  variants?: readonly string[];
+  sizes?: readonly string[]; // kapde/jute: customer product page par size chunta hai
+  colors: readonly string[];
+  specs: Record<string, readonly string[]>; // har product me inme se ek-ek
   about: string;
   gender?: "Men" | "Women" | "Unisex";
   ageGroup?: "Adult" | "Kids";
-  colors?: readonly string[];
 };
 
-const CLOTH_SPECS = { Fabric: ["Cotton", "Cotton Blend", "Linen", "Denim"], Fit: ["Regular", "Slim", "Relaxed"] };
+const CLOTH_SPECS = { Fabric: ["Cotton", "Cotton Blend", "Linen", "Rayon"], Fit: ["Regular", "Slim", "Relaxed"] };
+const CLOTH_COLORS = ["Black", "White", "Navy Blue", "Red", "Grey", "Beige", "Olive Green", "Maroon", "Mustard", "Sky Blue", "Pink", "Brown"];
+const TOP_SIZES = ["S", "M", "L", "XL", "XXL"];
+const KID_SIZES = ["2-3 Years", "4-5 Years", "6-7 Years", "8-9 Years", "10-11 Years"];
 
 const CATALOG: { name: string; children: Child[] }[] = [
   {
     name: "Mobiles & Tablets",
     children: [
-      { name: "Smartphones", item: "Smartphone", price: [7999, 89999], variantName: "Storage", variants: ["64GB", "128GB", "256GB", "512GB"], specs: { RAM: ["4GB", "6GB", "8GB", "12GB"], Battery: ["5000mAh", "6000mAh"], Camera: ["50MP", "64MP", "108MP"], Display: ["6.5 inch", "6.7 inch"] }, about: "A smartphone with a bright AMOLED display, all-day battery and a dependable camera.", colors: ["Black", "White", "Sky Blue", "Olive Green"] },
-      { name: "Tablets", item: "Tablet", price: [9999, 64999], variantName: "Storage", variants: ["64GB", "128GB", "256GB"], specs: { RAM: ["4GB", "6GB", "8GB"], Battery: ["7000mAh", "8000mAh"], Display: ["10.5 inch", "11 inch", "12.4 inch"] }, about: "A light tablet for online classes, movies and note taking, with a long-lasting battery.", colors: ["Grey", "Silver", "Sky Blue"] },
+      { name: "Smartphones", items: ["Smartphone"], price: [6999, 89999], variantName: "Storage", variants: ["64GB", "128GB", "256GB", "512GB"], colors: ["Black", "White", "Sky Blue", "Olive Green", "Purple"], specs: { RAM: ["4GB", "6GB", "8GB", "12GB"], Battery: ["5000mAh", "6000mAh"], Camera: ["50MP", "64MP", "108MP"], Display: ["6.5 inch", "6.7 inch"] }, about: "A smartphone with a bright AMOLED display, all-day battery and a dependable camera." },
+      { name: "Tablets", items: ["Tablet"], price: [9999, 64999], variantName: "Storage", variants: ["64GB", "128GB", "256GB"], colors: ["Grey", "Silver", "Sky Blue"], specs: { RAM: ["4GB", "6GB", "8GB"], Battery: ["7000mAh", "8000mAh"], Display: ["10.5 inch", "11 inch", "12.4 inch"] }, about: "A light tablet for online classes, movies and note taking, with a long-lasting battery." },
     ],
   },
   {
     name: "Laptops",
     children: [
-      { name: "Everyday Laptops", item: "Laptop", price: [28999, 159999], variantName: "RAM", variants: ["8GB", "16GB", "32GB"], specs: { Storage: ["512GB SSD", "1TB SSD"], Processor: ["Intel Core i5", "Intel Core i7", "AMD Ryzen 5", "AMD Ryzen 7"], Display: ["14 inch", "15.6 inch"] }, about: "A thin and light laptop built for work, study and coding, with a battery that lasts the day.", colors: ["Silver", "Grey", "Black"] },
-      { name: "Gaming Laptops", item: "Gaming Laptop", price: [59999, 219999], variantName: "Graphics", variants: ["RTX 4050", "RTX 4060", "RTX 4070"], specs: { RAM: ["16GB", "32GB"], Storage: ["512GB SSD", "1TB SSD"], Processor: ["Intel Core i7", "AMD Ryzen 7", "Intel Core i9"], Display: ["144Hz", "165Hz"] }, about: "High refresh rate display and a dedicated graphics card for games and video editing.", colors: ["Black", "Grey"] },
+      { name: "Everyday Laptops", items: ["Laptop"], price: [28999, 159999], variantName: "RAM", variants: ["8GB", "16GB", "32GB"], colors: ["Silver", "Grey", "Black"], specs: { Storage: ["512GB SSD", "1TB SSD"], Processor: ["Intel Core i5", "Intel Core i7", "AMD Ryzen 5", "AMD Ryzen 7"], Display: ["14 inch", "15.6 inch"] }, about: "A thin and light laptop built for work, study and coding, with a battery that lasts the day." },
+      { name: "Gaming Laptops", items: ["Gaming Laptop"], price: [59999, 219999], variantName: "Graphics", variants: ["RTX 4050", "RTX 4060", "RTX 4070"], colors: ["Black", "Grey"], specs: { RAM: ["16GB", "32GB"], Storage: ["512GB SSD", "1TB SSD"], Processor: ["Intel Core i7", "AMD Ryzen 7", "Intel Core i9"], Display: ["144Hz", "165Hz"] }, about: "High refresh rate display and a dedicated graphics card for games and video editing." },
+    ],
+  },
+  {
+    name: "Audio & Wearables",
+    children: [
+      { name: "Headphones", items: ["Headphones"], price: [499, 24999], colors: ["Black", "White", "Navy Blue", "Red"], specs: { Type: ["Over-ear", "On-ear", "In-ear", "True Wireless"], Battery: ["20 hours", "30 hours", "40 hours"], Feature: ["Noise Cancelling", "Bass Boost", "Low Latency"] }, about: "Clear sound with deep bass, a comfortable fit and a battery that lasts the whole week." },
+      { name: "Smart Watches", items: ["Smart Watch"], price: [1299, 29999], colors: ["Black", "Silver", "Pink", "Olive Green"], specs: { Display: ["1.4 inch AMOLED", "1.8 inch AMOLED", "1.9 inch LCD"], Battery: ["5 days", "7 days", "10 days"], Feature: ["Bluetooth Calling", "SpO2", "GPS"] }, about: "Tracks steps, heart rate and sleep, shows notifications and takes Bluetooth calls." },
     ],
   },
   {
     name: "Men's Fashion",
     children: [
-      { name: "Men's Jeans", item: "Jeans", price: [899, 5999], variantName: "Waist", variants: ["30", "32", "34", "36"], specs: { Fit: ["Slim", "Regular", "Straight"] }, about: "Stretchable denim that holds its shape through long days of sitting, walking and travelling.", gender: "Men", ageGroup: "Adult" },
-      { name: "Men's Shirts", item: "Shirt", price: [699, 4999], variantName: "Size", variants: ["S", "M", "L", "XL"], specs: CLOTH_SPECS, about: "A crisp shirt for the office on weekdays and parties on weekends.", gender: "Men", ageGroup: "Adult" },
-      { name: "Men's T-Shirts", item: "T-Shirt", price: [349, 2499], variantName: "Size", variants: ["S", "M", "L", "XL", "XXL"], specs: CLOTH_SPECS, about: "Soft cotton that keeps its shape and colour after a full season of washing.", gender: "Men", ageGroup: "Adult" },
+      { name: "Men's Shirts", items: ["Shirt"], price: [699, 4999], sizes: TOP_SIZES, colors: CLOTH_COLORS, specs: CLOTH_SPECS, about: "A crisp shirt for the office on weekdays and parties on weekends.", gender: "Men", ageGroup: "Adult" },
+      { name: "Men's T-Shirts", items: ["T-Shirt"], price: [349, 2499], sizes: TOP_SIZES, colors: CLOTH_COLORS, specs: CLOTH_SPECS, about: "Soft cotton that keeps its shape and colour after a full season of washing.", gender: "Men", ageGroup: "Adult" },
+      { name: "Men's Jeans", items: ["Jeans"], price: [899, 5999], sizes: ["28", "30", "32", "34", "36", "38"], colors: ["Blue", "Black", "Grey", "Navy Blue"], specs: { Fit: ["Slim", "Regular", "Straight"] }, about: "Stretchable denim that holds its shape through long days of sitting, walking and travelling.", gender: "Men", ageGroup: "Adult" },
+      { name: "Men's Shoes", items: ["Shoes"], price: [799, 8999], sizes: ["6", "7", "8", "9", "10", "11"], colors: ["Black", "White", "Brown", "Grey", "Navy Blue"], specs: { Type: ["Sneakers", "Running", "Formal", "Casual"], Sole: ["Rubber", "EVA"] }, about: "Cushioned sole and a breathable upper for all-day walking, running or office wear.", gender: "Men", ageGroup: "Adult" },
     ],
   },
   {
     name: "Women's Fashion",
     children: [
-      { name: "Women's Jeans", item: "Women's Jeans", price: [899, 4999], variantName: "Waist", variants: ["26", "28", "30", "32"], specs: { Fit: ["Skinny", "Straight", "Wide Leg"] }, about: "High-rise stretch jeans that stay comfortable from morning to evening.", gender: "Women", ageGroup: "Adult" },
-      { name: "Women's Kurtas", item: "Kurta", price: [599, 6999], variantName: "Size", variants: ["S", "M", "L", "XL"], specs: CLOTH_SPECS, about: "A breathable kurta with clean stitching for office, festivals and weddings.", gender: "Women", ageGroup: "Adult" },
-      { name: "Dresses", item: "Dress", price: [799, 7999], variantName: "Size", variants: ["S", "M", "L", "XL"], specs: CLOTH_SPECS, about: "A party dress with a flattering drape that needs no ironing.", gender: "Women", ageGroup: "Adult" },
-      { name: "Women's Tops", item: "Top", price: [399, 2999], variantName: "Size", variants: ["S", "M", "L", "XL"], specs: CLOTH_SPECS, about: "Easy everyday top that pairs with jeans, skirts and palazzos.", gender: "Women", ageGroup: "Adult" },
+      { name: "Women's Kurtas", items: ["Kurta"], price: [599, 6999], sizes: TOP_SIZES, colors: CLOTH_COLORS, specs: CLOTH_SPECS, about: "A breathable kurta with clean stitching for office, festivals and weddings.", gender: "Women", ageGroup: "Adult" },
+      { name: "Dresses", items: ["Dress"], price: [799, 7999], sizes: TOP_SIZES, colors: CLOTH_COLORS, specs: CLOTH_SPECS, about: "A party dress with a flattering drape that needs no ironing.", gender: "Women", ageGroup: "Adult" },
+      { name: "Women's Tops", items: ["Top"], price: [399, 2999], sizes: TOP_SIZES, colors: CLOTH_COLORS, specs: CLOTH_SPECS, about: "Easy everyday top that pairs with jeans, skirts and palazzos.", gender: "Women", ageGroup: "Adult" },
+      { name: "Women's Jeans", items: ["Women's Jeans"], price: [899, 4999], sizes: ["26", "28", "30", "32", "34"], colors: ["Blue", "Black", "Grey", "White"], specs: { Fit: ["Skinny", "Straight", "Wide Leg"] }, about: "High-rise stretch jeans that stay comfortable from morning to evening.", gender: "Women", ageGroup: "Adult" },
+      { name: "Sarees", items: ["Saree"], price: [799, 14999], colors: CLOTH_COLORS, specs: { Fabric: ["Silk", "Cotton", "Georgette", "Chiffon"], Occasion: ["Wedding", "Festive", "Daily Wear"] }, about: "Graceful drape with a matching blouse piece for weddings, festivals and pujas.", gender: "Women", ageGroup: "Adult" },
+      { name: "Women's Sandals", items: ["Sandals"], price: [399, 4999], sizes: ["4", "5", "6", "7", "8"], colors: ["Black", "Beige", "Brown", "Pink", "White"], specs: { Type: ["Flats", "Heels", "Wedges"], Sole: ["Rubber", "TPR"] }, about: "Light and comfortable sandals with a soft footbed for daily wear and outings.", gender: "Women", ageGroup: "Adult" },
     ],
   },
   {
     name: "Kids Fashion",
     children: [
-      { name: "Boys Clothing", item: "Boys T-Shirt", price: [249, 1999], variantName: "Age", variants: ["2-3 Years", "4-5 Years", "6-7 Years", "8-9 Years"], specs: { Fabric: ["Cotton", "Cotton Blend"] }, about: "Skin-friendly cotton with prints that survive playground afternoons and the washing machine.", gender: "Men", ageGroup: "Kids" },
-      { name: "Girls Clothing", item: "Girls Frock", price: [299, 2999], variantName: "Age", variants: ["2-3 Years", "4-5 Years", "6-7 Years", "8-9 Years"], specs: { Fabric: ["Cotton", "Rayon"] }, about: "Twirl-friendly frock in soft fabric with a comfortable inner lining.", gender: "Women", ageGroup: "Kids" },
+      { name: "Boys Clothing", items: ["Boys T-Shirt", "Boys Shirt", "Boys Jeans", "Boys Shorts"], price: [249, 1999], sizes: KID_SIZES, colors: CLOTH_COLORS, specs: { Fabric: ["Cotton", "Cotton Blend"] }, about: "Skin-friendly cotton clothes that survive playground afternoons and the washing machine.", gender: "Men", ageGroup: "Kids" },
+      { name: "Girls Clothing", items: ["Girls Frock", "Girls Top", "Girls Jeans", "Girls Leggings"], price: [299, 2999], sizes: KID_SIZES, colors: CLOTH_COLORS, specs: { Fabric: ["Cotton", "Rayon"] }, about: "Soft, comfortable clothes for school, play and parties.", gender: "Women", ageGroup: "Kids" },
     ],
   },
 ];
 
 const BRANDS = ["Voltro", "Nexora", "Urbanite", "Kestrel", "Zentra", "Auralis", "Pixelon", "Ironpeak", "Rangrez", "Tanvi", "Stonefield", "Lumora"] as const;
-
-const COLORS = [
-  "Black", "White", "Navy Blue", "Red", "Grey", "Beige", "Olive Green",
-  "Maroon", "Mustard", "Sky Blue", "Pink", "Brown", "Silver", "Purple", "Yellow",
-] as const;
 
 const MODELS = [
   "Nova", "Pulse", "Aero", "Prime", "Edge", "Flux", "Astra", "Vertex", "Drift",
@@ -142,9 +154,9 @@ const REVIEW_LINES = [
   "Delivery was late but the product itself is fine.",
 ] as const;
 
-const TOTAL_PRODUCTS = 500;
-const TOTAL_USERS = 50;
-const TOTAL_ORDERS = 300;
+const TOTAL_PRODUCTS = Number(process.env.SEED_PRODUCTS ?? 50000);
+const TOTAL_USERS = 500;
+const TOTAL_ORDERS = 3000;
 const BATCH = 1000;
 const SUPER_ADMIN_PHONE = process.env.SUPER_ADMIN_PHONE ?? "9876543210";
 
@@ -226,13 +238,12 @@ async function main() {
 
     for (let i = 0; i < count; i++) {
       const brand = pick(brandRows);
-      const model = pick(MODELS);
-      const variant = pick(child.variants);
-      const colorChoices = child.colors ?? COLORS;
-      const color = colorChoices.length > 0 ? pick(colorChoices) : null;
-      const series = between(2, 9);
+      const variant = child.variants ? pick(child.variants) : null;
+      const colors = pickSome(child.colors, child.sizes ? between(2, 4) : between(1, 3));
+      const someSizes = child.sizes?.filter(() => chance(85)) ?? [];
+      const sizes = someSizes.length > 0 ? someSizes : [...(child.sizes ?? [])];
 
-      const name = `${brand.name} ${model} ${series} ${child.item} ${variant}`;
+      const name = [brand.name, pick(MODELS), between(2, 99), pick(child.items), variant].filter(Boolean).join(" ");
       let slug = slugify(name);
       if (usedSlugs.has(slug)) slug = `${slug}-${products.length}`;
       usedSlugs.add(slug);
@@ -244,20 +255,19 @@ async function main() {
       const offerEndsAt = discountPercent > 0 && chance(35) ? daysFromNow(between(2, 45)) : null;
       const sellPaise = finalPrice(pricePaise, discountPercent);
 
-      const stock = chance(6) ? 0 : chance(12) ? between(1, 5) : between(10, 250);
+      const stock = chance(5) ? 0 : chance(10) ? between(1, 5) : between(10, 300);
+      const specs = Object.fromEntries(Object.entries(child.specs).map(([key, options]) => [key, pick(options)]));
+      if (variant && child.variantName) specs[child.variantName] = variant;
 
       products.push({
         id: randomUUID(),
         name,
         slug,
-        specs: {
-          [child.variantName]: variant,
-          ...Object.fromEntries(Object.entries(child.specs).map(([key, options]) => [key, pick(options)])),
-        },
+        specs,
         description: [
           child.about,
-          `${child.variantName}: ${variant}.`,
-          color ? `Colour: ${color}.` : "",
+          `Colours: ${colors.join(", ")}.`,
+          sizes.length > 0 ? `Sizes: ${sizes.join(", ")}.` : "",
           `Brand: ${brand.name}. Ships in 2-5 days with easy returns on damaged items.`,
         ]
           .filter(Boolean)
@@ -267,15 +277,16 @@ async function main() {
         sellPaise,
         offerEndsAt,
         stock,
-        color,
+        colors,
+        sizes,
         gender: child.gender ?? null,
         ageGroup: child.ageGroup ?? null,
-        images: [imageUrl(slug, 1), imageUrl(slug, 2), imageUrl(slug, 3)],
+        images: [1, 2, 3, 4].map((n) => imageUrl(slug, n)),
         categoryId,
         brandId: brand.id,
         isActive: !chance(3), // kuch products chhupe hue, taki admin ka hide/unhide dikhe
-        isTrending: chance(8),
-        isFeatured: chance(8),
+        isTrending: chance(5),
+        isFeatured: chance(5),
         ratingSum: 0,
         ratingCount: 0,
         ratingAverage: 0,
@@ -334,7 +345,7 @@ async function main() {
   const orderItems = [];
   const deliveredPairs: { userId: string; productId: string }[] = [];
   const liveProducts = products.filter((p) => p.isActive);
-  const popular = liveProducts.slice(0, 400);
+  const popular = liveProducts.slice(0, 2000);
 
   // Orders sirf customers ke, taaki admin ke naam pe unpaid order na ho aur uska checkout na ruke.
   const customers = users.filter((u) => u.role === "USER");
@@ -384,6 +395,8 @@ async function main() {
         productImage: product.images[0],
         pricePaise,
         quantity,
+        size: product.sizes.length > 0 ? pick(product.sizes) : null,
+        color: product.colors.length > 0 ? pick(product.colors) : null,
       });
 
       if (status === "DELIVERED") deliveredPairs.push({ userId: user.id, productId: product.id });

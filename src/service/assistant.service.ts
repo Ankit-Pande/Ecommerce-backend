@@ -16,6 +16,8 @@ import {
   readQuestion,
 } from "./assistant.search";
 import { findTool, toolsFor, ToolUser } from "./assistant.tools";
+import { cartService } from "./cart.service";
+import { orderService } from "./order.service";
 
 type Message = { role: "user" | "assistant"; content: string };
 type ChatInput = { messages: Message[]; confirm?: boolean };
@@ -72,6 +74,12 @@ const REPLIES = {
   done: { hi: "Ho gaya ✅", en: "Done ✅" },
   unchanged: { hi: "Theek hai, kuch nahi badla.", en: "Okay, nothing was changed." },
   nothingPending: { hi: "Koi kaam pending nahi hai.", en: "Nothing is pending." },
+  removed: { hi: '"{name}" cart se hata diya ✅', en: '"{name}" removed from your cart ✅' },
+  whichItem: { hi: "Kaunsa item hatana hai? {names}", en: "Which item should I remove? {names}" },
+  noOrderToCancel: {
+    hi: "Cancel karne layak koi order nahi mila (sirf bina payment wale, bina ship hue order cancel hote hain).",
+    en: "No order found that can be cancelled (only unpaid orders that are not shipped yet).",
+  },
   fallback: {
     hi: "Maaf kijiye, abhi jawab nahi de paaya. Dobara try karein.",
     en: "Sorry, I could not answer right now. Please try again.",
@@ -87,14 +95,17 @@ const ACTION_WORDS =
 const MORE_WORDS =
   /^(show( me)? more|more|next|aur|or|aage|baaki|baki)( \d+)?( products?| items?)?( dikhao| dikha| bhejo| batao| do| please| pls)?[\s.!?]*$/i;
 
-// "cart khali karo", "empty my cart": seedha confirm poochho, AI ki zaroorat nahi.
-const CLEAR_CART = /\bcart\b.*\b(khali|khaali|empty|clear|saaf|saf)\b|\b(empty|clear)\b.*\bcart\b/i;
+// "cart khali karo", "shirt cart se hatao", "order cancel karo": AI ke bina seedha DB se.
+const CART_REMOVE =
+  /\bcart\b.*\b(khali|khaali|empty|clear|saaf|saf|remove|hatao|hata|nikalo|delete)\b|\b(empty|clear|remove|delete)\b.*\bcart\b/i;
+const ORDER_CANCEL = /\borders?\b.*\bcancel\b|\bcancel\b.*\borders?\b/i;
+const ORDER_NO = /\b[0-9a-f]{8}\b/i;
 
 const SMALL_TALK =
   /^(hi+|hello+|hey+|hlo|namaste|namaskar|good (morning|afternoon|evening|night)|thanks?|thank you|thanku|thx|ok+|okay|ac+h+a|theek hai|thik hai|bye|hmm+|help)[\s.!?]*$/i;
 
 const HINGLISH_WORDS =
-  /[ऀ-ॿ]|\b(hai|hain|ka|ki|ke|ko|mein|mujhe|muje|mera|meri|mere|dikhao|dikha|chahiye|chaiye|wala|wali|wale|liye|kya|kaise|kahan|kitna|kitne|aur|bhi|sasta|saste|nahi|nhi|haan|karo|batao|tak|andar|neeche|niche|kaun|kab|kyun|kyu)\b/i;
+  /[ऀ-ॿ]|\b(hai|hain|ka|ki|ke|ko|mein|mujhe|muje|mera|meri|mere|dikhao|dikha|chahiye|chaiye|wala|wali|wale|liye|kya|kaise|kahan|kitna|kitne|aur|bhi|sasta|saste|nahi|nhi|haan|karo|kar|karde|batao|se|hatao|hata|khali|tak|andar|neeche|niche|kaun|kab|kyun|kyu)\b/i;
 
 // User kis bhasha me likh raha hai: Hindi/Hinglish ya English (user ke saare sawal dekh kar).
 function languageOf(messages: Message[]): Lang {
@@ -111,7 +122,8 @@ function systemPrompt(user: ToolUser): string {
 Rules:
 - Only help with ApnaKart: products, this user's cart and orders${user.isAdmin ? ", and admin store tasks (orders, customers, stock, trending, featured, offers, hide/show, stats)" : ""}. For anything else say you can only help with ApnaKart shopping.
 - Get every fact from tools. Never make up products, prices, stock or orders. If the results are not the asked brand or item, say clearly it is not available instead of pretending.
-- For product requests call search_products once per product type. For details or reviews of one product call get_product. For the user's own profile call get_profile.
+- For product requests call search_products once per product type (it also handles trending, offers and budgets). For details, sizes, colours or reviews of one product call get_product. For the user's own profile call get_profile.
+- Actions: to remove something from the cart call get_cart, then remove_from_cart with its itemId; to cancel an order call list_orders, then cancel_order. Ask which size or colour before add_to_cart when the product has them.
 - Product cards are shown automatically, so do not repeat product details. For cart and orders give a short list.
 - Answer only what was asked (asked for order list -> only the list).
 - Ordering and payment happen on the checkout page: tell the user to open the cart and checkout.
@@ -239,6 +251,36 @@ async function askToConfirm(user: ToolUser, name: string, args: unknown): Promis
   return { reply: text, confirm: true };
 }
 
+const nameWords = (text: string) => text.toLowerCase().split(/[^a-z0-9]+/);
+
+// Cart se hatao: naam se ek item mile to wahi hatao, kai milein to poochho, koi na mile to poora cart (Confirm ke baad).
+// Order cancel: order number likha ho to wo, warna sabse naya bina payment wala, bina ship hua order (Confirm ke baad).
+async function quickAction(user: ToolUser, question: string, lang: Lang): Promise<ChatReply | null> {
+  if (CART_REMOVE.test(question)) {
+    const { items } = await cartService.getCart(user.userId);
+    const asked = new Set(nameWords(question).filter((word) => word.length >= 3 && word !== "cart"));
+    const score = (name: string) => nameWords(name).filter((word) => asked.has(word)).length;
+    const best = Math.max(0, ...items.map((item) => score(item.product.name)));
+    const named = best > 0 ? items.filter((item) => score(item.product.name) === best) : [];
+    if (named.length === 0) return askToConfirm(user, "clear_cart", {});
+    if (named.length > 1) {
+      return { reply: REPLIES.whichItem[lang].replace("{names}", named.map((item) => item.product.name).join(", ")) };
+    }
+    await cartService.removeItem(user.userId, named[0].id);
+    return { reply: REPLIES.removed[lang].replace("{name}", named[0].product.name) };
+  }
+  if (ORDER_CANCEL.test(question)) {
+    const orderNo = question.match(ORDER_NO)?.[0].toLowerCase();
+    const { items: orders } = await orderService.listForUser(user.userId, undefined, undefined, 50);
+    const order = orderNo
+      ? orders.find((item) => item.id.startsWith(orderNo))
+      : orders.find((item) => ["PENDING", "CONFIRMED"].includes(item.status) && item.paymentStatus === "PENDING");
+    if (!order) return { reply: REPLIES.noOrderToCancel[lang] };
+    return askToConfirm(user, "cancel_order", { orderId: order.id });
+  }
+  return null;
+}
+
 // AI se baat: AI jo function maange hum chalate hain, max 4 baar.
 async function askAi(user: ToolUser, messages: Message[], lang: Lang): Promise<ChatReply> {
   const start = messages.findIndex((m) => m.role === "user");
@@ -305,9 +347,8 @@ export const assistantService = {
 
     const nothingFound = search ? notFoundText(search.question, lang) : REPLIES.help[lang];
     if (!user) return { reply: isAction ? REPLIES.login[lang] : nothingFound };
-    if (CLEAR_CART.test(question)) {
-      return askToConfirm(user, "clear_cart", {}).catch((error) => ({ reply: errorText(error) }));
-    }
+    const action = await quickAction(user, question, lang).catch((error) => ({ reply: errorText(error) }));
+    if (action) return action;
     if (!geminiReady || !/[a-zऀ-ॿ]{3}/i.test(question)) return { reply: nothingFound };
     const limitReply = await aiLimitReply(user, lang);
     if (limitReply) return { reply: limitReply };

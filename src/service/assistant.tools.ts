@@ -7,7 +7,7 @@ import { uuid } from "../validation/common";
 import { Card, CARD_FIELDS, findProducts, readQuestion, toCard } from "./assistant.search";
 import { adminService } from "./admin.service";
 import { cartService } from "./cart.service";
-import { orderService } from "./order.service";
+import { checkCanCancel, orderService } from "./order.service";
 import { userService } from "./user.service";
 
 export type ToolUser = { userId: string; isAdmin: boolean };
@@ -70,7 +70,6 @@ const TOOLS: Record<string, Tool> = {
         select: {
           ...CARD_FIELDS,
           description: true,
-          color: true,
           brand: { select: { name: true } },
           category: { select: { name: true } },
           reviews: { select: { rating: true, comment: true }, orderBy: { createdAt: "desc" }, take: 3 },
@@ -83,7 +82,8 @@ const TOOLS: Record<string, Tool> = {
           ...shortInfo(card),
           brand: product.brand?.name,
           category: product.category.name,
-          color: product.color,
+          colors: product.colors,
+          sizes: product.sizes,
           description: product.description.slice(0, 400),
           ratingCount: card.rating.count,
           latestReviews: product.reviews,
@@ -110,7 +110,13 @@ const TOOLS: Record<string, Tool> = {
       return {
         data: {
           totalRupees: rupees(cart.totalPaise),
-          items: cart.items.map((item) => ({ ...shortInfo(item.product), quantity: item.quantity })),
+          items: cart.items.map((item) => ({
+            itemId: item.id,
+            ...shortInfo(item.product),
+            quantity: item.quantity,
+            size: item.size || undefined,
+            color: item.color || undefined,
+          })),
         },
       };
     },
@@ -119,12 +125,22 @@ const TOOLS: Record<string, Tool> = {
   add_to_cart: {
     declaration: {
       name: "add_to_cart",
-      description: "Add a product (id from search_products) to the cart.",
-      parameters: toolInputs({ productId: { type: "STRING" }, quantity: { type: "INTEGER" } }, ["productId"]),
+      description:
+        "Add a product (id from search_products) to the cart. If the product has sizes or many colours (see get_product), ask the user which one first.",
+      parameters: toolInputs(
+        { productId: { type: "STRING" }, quantity: { type: "INTEGER" }, size: { type: "STRING" }, color: { type: "STRING" } },
+        ["productId"],
+      ),
     },
-    schema: z.object({ productId: uuid, quantity: z.number().int().min(1).max(10).default(1) }),
+    schema: z.object({
+      productId: uuid,
+      quantity: z.number().int().min(1).max(10).default(1),
+      size: z.string().max(30).optional(),
+      color: z.string().max(30).optional(),
+    }),
     async run(user, args) {
-      const cart = await cartService.addItem(user.userId, args.productId, args.quantity);
+      const { productId, quantity, size, color } = args;
+      const cart = await cartService.addItem(user.userId, productId, quantity, { size, color });
       return { data: { added: true, itemsInCart: cart.items.length } };
     },
   },
@@ -132,12 +148,12 @@ const TOOLS: Record<string, Tool> = {
   remove_from_cart: {
     declaration: {
       name: "remove_from_cart",
-      description: "Remove a product (id from get_cart) from the cart.",
-      parameters: toolInputs({ productId: { type: "STRING" } }, ["productId"]),
+      description: "Remove one cart line (itemId from get_cart) from the cart.",
+      parameters: toolInputs({ itemId: { type: "STRING" } }, ["itemId"]),
     },
-    schema: z.object({ productId: uuid }),
+    schema: z.object({ itemId: uuid }),
     async run(user, args) {
-      const cart = await cartService.removeItem(user.userId, args.productId);
+      const cart = await cartService.removeItem(user.userId, args.itemId);
       return { data: { removed: true, itemsInCart: cart.items.length } };
     },
   },
@@ -189,6 +205,7 @@ const TOOLS: Record<string, Tool> = {
     schema: z.object({ orderId: uuid }),
     async confirmText(user, args) {
       const order = await orderService.getForUser(user.userId, args.orderId);
+      checkCanCancel(order);
       return `Order #${shortId(order.id)} (₹${rupees(order.totalPaise)}) cancel karein?`;
     },
     async run(user, args) {
@@ -201,13 +218,24 @@ const TOOLS: Record<string, Tool> = {
     adminOnly: true,
     declaration: {
       name: "admin_find_products",
-      description: "Admin: find products by name with stock, active, trending, featured and offer details.",
-      parameters: toolInputs({ name: { type: "STRING" } }, ["name"]),
+      description:
+        "Admin: products with stock, active, trending, featured and offer details. Find by name, or list trending=true / featured=true products.",
+      parameters: toolInputs({ name: { type: "STRING" }, trending: { type: "BOOLEAN" }, featured: { type: "BOOLEAN" } }),
     },
-    schema: z.object({ name: z.string().trim().min(2).max(120) }),
+    schema: z
+      .object({
+        name: z.string().trim().min(2).max(120).optional(),
+        trending: z.boolean().optional(),
+        featured: z.boolean().optional(),
+      })
+      .refine((a) => a.name || a.trending || a.featured, "Give a name, trending or featured"),
     async run(_user, args) {
       const rows = await prisma.product.findMany({
-        where: { name: { contains: args.name, mode: "insensitive" } },
+        where: {
+          ...(args.name && { name: { contains: args.name, mode: "insensitive" } }),
+          ...(args.trending && { isTrending: true }),
+          ...(args.featured && { isFeatured: true }),
+        },
         select: {
           id: true,
           name: true,
@@ -219,7 +247,7 @@ const TOOLS: Record<string, Tool> = {
           sellPaise: true,
         },
         orderBy: { updatedAt: "desc" },
-        take: 5,
+        take: 10,
       });
       return { data: rows.map(({ sellPaise, ...row }) => ({ ...row, priceRupees: rupees(sellPaise) })) };
     },

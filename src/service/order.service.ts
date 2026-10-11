@@ -6,6 +6,7 @@ import { AppError } from "../utils/appError";
 import { clearStoreCache } from "../config/cache";
 import { pageQuery, paginate } from "../utils/paginate";
 import { ACTIVE_CATEGORY, finalPrice, stockStatus } from "../utils/price";
+import { chooseOptions, Options } from "./cart.service";
 
 const ALLOWED_NEXT_STATUS: Record<OrderStatus, OrderStatus[]> = {
   PENDING: [],
@@ -44,27 +45,34 @@ function checkoutResponse(order: Order) {
   };
 }
 
-type BuyNow = { productId: string; quantity: number };
+type BuyNow = { productId: string; quantity: number } & Options;
 
-// Order me kya-kya jayega (cart ya Buy now ka product) aur total; lockProducts=true par products ek tay kram me rok lo taaki beech me price ya stock na badle.
+// Order me kya-kya jayega (cart ya Buy now ka product, chune size/rang ke saath) aur total; lockProducts=true par products ek tay kram me rok lo taaki beech me price ya stock na badle.
 async function getOrderLines(db: Prisma.TransactionClient, userId: string, lockProducts: boolean, buyNow?: BuyNow) {
-  let items: { cartItemId: string | null; productId: string; quantity: number }[];
+  let items: { cartItemId: string | null; productId: string; quantity: number; size: string; color: string }[];
   if (buyNow) {
-    items = [{ cartItemId: null, ...buyNow }];
+    const product = await db.product.findUnique({
+      where: { id: buyNow.productId },
+      select: { sizes: true, colors: true },
+    });
+    if (!product) throw new AppError("Some products are unavailable or out of stock", 409);
+    items = [{ cartItemId: null, productId: buyNow.productId, quantity: buyNow.quantity, ...chooseOptions(product, buyNow) }];
   } else {
     const cart = await db.cart.findUnique({
       where: { userId },
       include: { items: { orderBy: { productId: "asc" } } },
     });
-    items = (cart?.items ?? []).map((item) => ({
-      cartItemId: item.id,
-      productId: item.productId,
-      quantity: item.quantity,
+    items = (cart?.items ?? []).map(({ id, productId, quantity, size, color }) => ({
+      cartItemId: id,
+      productId,
+      quantity,
+      size,
+      color,
     }));
   }
   if (items.length === 0) throw new AppError("Cart is empty", 400);
 
-  const productIds = items.map((item) => item.productId);
+  const productIds = [...new Set(items.map((item) => item.productId))];
 
   if (lockProducts) {
     await db.$queryRaw`
@@ -85,11 +93,15 @@ async function getOrderLines(db: Prisma.TransactionClient, userId: string, lockP
   });
   const productById = new Map(products.map((product) => [product.id, product]));
 
+  // Ek product ke alag size/rang ki lines mila kar stock dekho.
+  const needed = new Map<string, number>();
+  for (const item of items) needed.set(item.productId, (needed.get(item.productId) ?? 0) + item.quantity);
+
   let totalPaise = 0;
   const lines = [];
   for (const item of items) {
     const product = productById.get(item.productId);
-    if (!product || product.stock < item.quantity) {
+    if (!product || product.stock < needed.get(item.productId)!) {
       throw new AppError("Some products are unavailable or out of stock", 409);
     }
 
@@ -103,6 +115,8 @@ async function getOrderLines(db: Prisma.TransactionClient, userId: string, lockP
       productImage: product.images[0] ?? null,
       pricePaise,
       quantity: item.quantity,
+      size: item.size || null,
+      color: item.color || null,
     });
   }
 
@@ -137,6 +151,17 @@ async function cancelAndReturnStock(db: Prisma.TransactionClient, orderId: strin
       where: { id: item.productId },
       data: { stock: { increment: item.quantity } },
     });
+  }
+}
+
+// Order cancel ho sakta hai? Nahi to wajah ke saath error (AI bhi confirm se pehle yahi check karta hai).
+export function checkCanCancel(order: { status: OrderStatus; paymentStatus: string }) {
+  if (order.status === "CANCELLED") throw new AppError("Order is already cancelled", 409);
+  if (order.status === "SHIPPED" || order.status === "DELIVERED") {
+    throw new AppError(`Order is already ${order.status.toLowerCase()} and cannot be cancelled`, 409);
+  }
+  if (order.paymentStatus !== "PENDING") {
+    throw new AppError("Paid order cannot be cancelled here — refund is not available yet. Please contact the store.", 409);
   }
 }
 
@@ -320,16 +345,7 @@ export const orderService = {
       const order = await lockOrder(db, orderId);
       if (userId && order.userId !== userId) throw new AppError("Order not found", 404);
 
-      if (order.status === "CANCELLED") throw new AppError("Order is already cancelled", 409);
-      if (order.status === "SHIPPED" || order.status === "DELIVERED") {
-        throw new AppError(`Order is already ${order.status.toLowerCase()} and cannot be cancelled`, 409);
-      }
-      if (order.paymentStatus !== "PENDING") {
-        throw new AppError(
-          "Paid order cannot be cancelled here — refund is not available yet. Please contact the store.",
-          409,
-        );
-      }
+      checkCanCancel(order);
       await cancelAndReturnStock(db, orderId, userId ? "USER" : "ADMIN");
     });
     await clearStoreCache();
@@ -402,7 +418,7 @@ export const orderService = {
       where: { userId, ...(status && { status: { in: status } }) },
       select: {
         ...ORDER_FIELDS,
-        items: { select: { productName: true, productImage: true, pricePaise: true, quantity: true } },
+        items: { select: { productName: true, productImage: true, pricePaise: true, quantity: true, size: true, color: true } },
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       ...pageQuery(cursor, limit),
@@ -429,6 +445,8 @@ export const orderService = {
             productId: true,
             productName: true,
             productImage: true,
+            size: true,
+            color: true,
             pricePaise: true,
             quantity: true,
             product: { select: { slug: true, description: true } },

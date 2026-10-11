@@ -6,9 +6,6 @@ const formBoolean = z.preprocess((v) => (v === "true" ? true : v === "false" ? f
 // Form me khaali string bhejo = field hatao (null).
 const emptyToNull = (v: unknown) => (v === "" ? null : v);
 
-const clearableText = (max: number) =>
-  z.preprocess((v) => (typeof v === "string" && !v.trim() ? null : v), z.string().trim().min(1).max(max).nullable());
-
 // Fixed list wale field. Khaali bhejo to field hat jaata hai.
 const clearableEnum = <T extends readonly [string, ...string[]]>(values: T) =>
   z.preprocess(emptyToNull, z.enum(values).nullable());
@@ -23,6 +20,15 @@ function readSpecs(value: unknown) {
   if (lines.length === 0) return null;
   return Object.fromEntries(lines.map(([key, ...rest]) => [key.trim(), rest.join(":").trim()]));
 }
+
+// Options form me "S, M, L" (ya bulk me list) -> ["S", "M", "L"]; khaali bhejo to koi option nahi.
+const optionList = z.preprocess(
+  (v) => (typeof v === "string" ? v.split(",") : v),
+  z
+    .array(z.string().trim().max(30))
+    .transform((items) => [...new Set(items.filter(Boolean))])
+    .refine((items) => items.length <= 20, "Max 20 options"),
+);
 
 const specs = z.preprocess(
   readSpecs,
@@ -41,7 +47,8 @@ const productFields = {
   stock: z.coerce.number().int().min(0).max(100000).default(0),
   categoryId: uuid,
   brandId: z.preprocess(emptyToNull, uuid.nullable()).optional(),
-  color: clearableText(30).optional(),
+  colors: optionList.optional(),
+  sizes: optionList.optional(),
   gender: clearableEnum(GENDERS).optional(),
   ageGroup: clearableEnum(AGE_GROUPS).optional(),
   specs: specs.optional(),

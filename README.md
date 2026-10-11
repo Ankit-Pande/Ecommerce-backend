@@ -16,7 +16,7 @@ npm install
 cp .env.example .env        # Windows PowerShell: copy .env.example .env
 npx prisma generate
 npx prisma migrate deploy   # creates the tables
-npm run seed                # optional demo data (wipes the DB, dev only)
+npm run seed                # optional demo data: 50,000 products (wipes the DB, dev only)
 npm run dev                 # http://localhost:8000
 ```
 
@@ -32,7 +32,7 @@ Generate each secret with `openssl rand -hex 32` and use a different value for e
 | `npm run build` | Build to `dist/` |
 | `npm start` | Run migrations, then start the build |
 | `npm run typecheck` | Check types |
-| `npm run seed` | Fill demo data (development only) |
+| `npm run seed` | Fill demo data: 50,000 products, 500 users, 3,000 orders (development only; set `SEED_PRODUCTS=5000` for fewer) |
 | `npm run embed` | Create search embeddings for products that have none |
 
 ## Folders
@@ -58,7 +58,7 @@ All responses are `{ success, data }`, `{ success, items, nextCursor }` or `{ su
 | Area | Endpoints |
 | --- | --- |
 | Health | `GET /health`, `GET /health/ready` |
-| Store | `GET /api/home`, `GET /api/catalog`, `GET /api/catalog/filters` |
+| Store | `GET /api/home`, `GET /api/catalog` |
 | Products | `GET /api/products/:slug`, `/related`, `/reviews` (GET, POST) |
 | Auth | `POST /api/auth/send-otp`, `verify-otp`, `refresh`, `logout` |
 | User | `/api/user/me` (GET, PATCH, DELETE), `/api/address`, `/api/cart` |
@@ -73,6 +73,8 @@ All responses are `{ success, data }`, `{ success, items, nextCursor }` or `{ su
 - An online order is marked paid only after the server checks the Razorpay signature and payment (verify-payment API or webhook), never on the browser's word.
 - Stock is reserved at checkout with `UPDATE ... WHERE stock >= qty`, so two buyers cannot get the last item.
 - Lists use cursor pagination.
+- A product can have many colours and sizes; the customer picks them before adding to cart, and they are saved on the cart line and order line. Stock is one number per product.
+- The AI assistant answers only from the store's database. Logged-in users can ask it to remove cart items, empty the cart or cancel an unpaid order; cancelling and emptying ask "Confirm" first.
 - The phone in `SUPER_ADMIN_PHONE` becomes super admin on first login.
 
 ## Deploy (Railway)

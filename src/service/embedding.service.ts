@@ -12,6 +12,7 @@ const MAX_DISTANCE = 0.45;
 export type SearchFilters = {
   brandIds?: string[];
   categoryIds?: string[];
+  categoryNames?: string[];
   colors?: string[];
   gender?: string[];
   ageGroup?: string[];
@@ -23,7 +24,7 @@ export type SearchFilters = {
   size?: string;
 };
 
-// AI search ke filter (SQL, product "p"): chalu product, brand, category, rang, kiske liye (phone jaise bina gender wale bhi), price, offer, trending, featured, size (naam me "UK 8", "Size 8" ya aakhir me "8").
+// AI search ke filter (SQL, product "p"): chalu product, brand, category (ya naam me category, jaise "Boys T-Shirt"), rang, kiske liye (phone jaise bina gender wale bhi), price, offer, trending, featured, size.
 export function productFilterSql(filters: SearchFilters): Prisma.Sql[] {
   const where: Prisma.Sql[] = [
     Prisma.sql`p."isActive" = true`,
@@ -31,8 +32,14 @@ export function productFilterSql(filters: SearchFilters): Prisma.Sql[] {
       WHERE c."id" = p."categoryId" AND c."isActive" = true AND (pc."id" IS NULL OR pc."isActive" = true))`,
   ];
   if (filters.brandIds) where.push(Prisma.sql`p."brandId" IN (${Prisma.join(filters.brandIds)})`);
-  if (filters.categoryIds) where.push(Prisma.sql`p."categoryId" IN (${Prisma.join(filters.categoryIds)})`);
-  if (filters.colors) where.push(Prisma.sql`p."color" IN (${Prisma.join(filters.colors)})`);
+  if (filters.categoryIds) {
+    const byName = (filters.categoryNames ?? []).map(
+      (name) => Prisma.sql`p."searchText" @@ plainto_tsquery('english', ${name})`,
+    );
+    const inCategory = Prisma.sql`p."categoryId" IN (${Prisma.join(filters.categoryIds)})`;
+    where.push(Prisma.sql`(${Prisma.join([inCategory, ...byName], " OR ")})`);
+  }
+  if (filters.colors) where.push(Prisma.sql`p."colors" && ARRAY[${Prisma.join(filters.colors)}]::text[]`);
   if (filters.gender) where.push(Prisma.sql`(p."gender" IN (${Prisma.join(filters.gender)}) OR p."gender" IS NULL)`);
   if (filters.ageGroup) {
     where.push(Prisma.sql`(p."ageGroup" IN (${Prisma.join(filters.ageGroup)}) OR p."ageGroup" IS NULL)`);
@@ -42,9 +49,7 @@ export function productFilterSql(filters: SearchFilters): Prisma.Sql[] {
   if (filters.discount) where.push(Prisma.sql`p."discountPercent" > 0`);
   if (filters.trending) where.push(Prisma.sql`p."isTrending" = true`);
   if (filters.featured) where.push(Prisma.sql`p."isFeatured" = true`);
-  if (filters.size) {
-    where.push(Prisma.sql`p."name" ~* ${`(uk|size)\\s*${filters.size}\\M|\\m${filters.size}\\s*(uk)?\\s*$`}`);
-  }
+  if (filters.size) where.push(Prisma.sql`${filters.size} ILIKE ANY(p."sizes")`);
   return where;
 }
 
@@ -58,7 +63,8 @@ async function productTexts(ids: string[]) {
       id: true,
       name: true,
       description: true,
-      color: true,
+      colors: true,
+      sizes: true,
       gender: true,
       ageGroup: true,
       specs: true,
@@ -75,7 +81,8 @@ async function productTexts(ids: string[]) {
       p.category.name,
       p.gender,
       p.ageGroup,
-      p.color,
+      p.colors.join(", "),
+      p.sizes.length > 0 && `sizes ${p.sizes.join(", ")}`,
       p.specs &&
         Object.entries(p.specs)
           .map(([key, value]) => `${key} ${value}`)
@@ -108,12 +115,11 @@ export const embeddingService = {
         items.map((item) => item.text),
         "RETRIEVAL_DOCUMENT",
       );
-      await prisma.$transaction(
-        items.map(
-          (item, index) =>
-            prisma.$executeRaw`UPDATE "Product" SET "embedding" = ${toVector(vectors[index])}::halfvec WHERE "id" = ${item.id}`,
-        ),
-      );
+      // Poora batch ek hi query me save (remote DB par 100 alag query bahut dheere chalti hain).
+      await prisma.$executeRaw`
+        UPDATE "Product" p SET "embedding" = v.vector::halfvec
+        FROM unnest(${items.map((item) => item.id)}::text[], ${vectors.map(toVector)}::text[]) AS v(id, vector)
+        WHERE p."id" = v.id`;
     }
   },
 

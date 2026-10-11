@@ -1,8 +1,8 @@
 import { RequestHandler, Router } from "express";
-import { getCatalog, getFilters } from "../controller/catalog.controller";
+import { getCatalog } from "../controller/catalog.controller";
 import { rateLimiter } from "../middleware/rateLimiter";
 import { validate } from "../middleware/validate";
-import { catalogFiltersSchema, catalogSchema } from "../validation/catalog.validation";
+import { catalogSchema } from "../validation/catalog.validation";
 
 const router = Router();
 
@@ -16,7 +16,6 @@ const searchLimiter = rateLimiter({
 const limitSearchOnly: RequestHandler = (req, res, next) =>
   req.query.q ? searchLimiter(req, res, next) : next();
 
-router.get("/filters", validate(catalogFiltersSchema), getFilters);
 router.get("/", limitSearchOnly, validate(catalogSchema), getCatalog);
 
 export const catalogRoutes = router;

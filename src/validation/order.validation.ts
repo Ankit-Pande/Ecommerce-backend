@@ -8,7 +8,12 @@ export const checkoutSchema = z.object({
       addressId: uuid,
       paymentMethod: z.enum(["COD", "ONLINE"]).default("ONLINE"),
       buyNow: z
-        .object({ productId: uuid, quantity: z.coerce.number().int().min(1).max(10) })
+        .object({
+          productId: uuid,
+          quantity: z.coerce.number().int().min(1).max(10),
+          size: z.string().trim().max(30).optional(),
+          color: z.string().trim().max(30).optional(),
+        })
         .strict()
         .optional(),
     })

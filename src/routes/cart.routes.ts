@@ -10,7 +10,7 @@ router.use(authCheck);
 
 router.get("/", getCart);
 router.post("/", validate(addToCartSchema), addToCart);
-router.patch("/:productId", validate(updateCartItemSchema), updateCartItem);
-router.delete("/:productId", validate(cartItemParamSchema), removeCartItem);
+router.patch("/:itemId", validate(updateCartItemSchema), updateCartItem);
+router.delete("/:itemId", validate(cartItemParamSchema), removeCartItem);
 
 export const cartRoutes = router;

@@ -150,7 +150,9 @@ model Product {
   offerEndsAt     DateTime?
 
   stock    Int      @default(0)
-  color    String?
+  // Customer inme se chunta hai (jaise ["Black", "Blue"], ["S", "M", "L"]); khaali = koi option nahi.
+  colors   String[] @default([])
+  sizes    String[] @default([])
   gender   String?
   ageGroup String?
   images   String[]
@@ -174,8 +176,8 @@ model Product {
   // AI search ka data (Gemini embedding). Naye "migrate dev" me "DROP INDEX Product_embedding_idx" aaye to wo line hata dena.
   embedding Unsupported("halfvec(768)")?
 
-  // AI search ke liye naam, rang aur specs ke shabd (DB khud banata hai, full-text index ke saath).
-  searchText Unsupported("tsvector")? @default(dbgenerated("to_tsvector('english'::regconfig, ((((COALESCE(name, ''::text) || ' '::text) || COALESCE(color, ''::text)) || ' '::text) || COALESCE((specs)::text, ''::text)))"))
+  // AI search ke liye naam aur specs ke shabd (DB khud banata hai, full-text index ke saath).
+  searchText Unsupported("tsvector")? @default(dbgenerated("to_tsvector('english'::regconfig, ((COALESCE(name, ''::text) || ' '::text) || COALESCE((specs)::text, ''::text)))"))
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -195,7 +197,7 @@ model Product {
   @@index([discountPercent, offerEndsAt])
   @@index([name(ops: raw("gin_trgm_ops"))], type: Gin)
   @@index([description(ops: raw("gin_trgm_ops"))], type: Gin)
-  @@index([color(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([colors], type: Gin)
   @@index([searchText], type: Gin)
 }
 
@@ -217,11 +219,14 @@ model CartItem {
   productId String
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   quantity  Int
+  // Chuna hua size aur rang ('' = product me ye option nahi).
+  size      String  @default("")
+  color     String  @default("")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([cartId, productId])
+  @@unique([cartId, productId, size, color])
 }
 
 // Stock order banne par katta hai aur sirf cancel hone par wapas aata hai.
@@ -281,6 +286,8 @@ model OrderItem {
   productImage String?
   pricePaise   Int
   quantity     Int
+  size         String?
+  color        String?
 
   @@index([orderId])
   @@index([productId])
