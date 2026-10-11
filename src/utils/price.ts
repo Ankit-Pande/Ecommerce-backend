@@ -42,7 +42,12 @@ export const CARD_SELECT = {
   stock: true,
   ratingSum: true,
   ratingCount: true,
+  sizes: true,
+  colors: true,
 } satisfies Prisma.ProductSelect;
+
+// Size ya ek se zyada rang ho to customer ko pehle chunna padega.
+export const needsChoice = (p: { sizes: string[]; colors: string[] }) => p.sizes.length > 0 || p.colors.length > 1;
 
 // Har jagah (home, catalog, cart) product card ek jaisa dikhe.
 export function productCard(p: Prisma.ProductGetPayload<{ select: typeof CARD_SELECT }>) {
@@ -57,5 +62,6 @@ export function productCard(p: Prisma.ProductGetPayload<{ select: typeof CARD_SE
     finalPricePaise: finalPrice(p.pricePaise, p.discountPercent, p.offerEndsAt),
     stockStatus: stockStatus(p.stock),
     rating: ratingInfo(p.ratingSum, p.ratingCount),
+    hasOptions: needsChoice(p),
   };
 }

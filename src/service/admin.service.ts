@@ -17,7 +17,8 @@ type ProductInput = {
   stock: number;
   categoryId: string;
   brandId?: string | null;
-  color?: string | null;
+  colors?: string[];
+  sizes?: string[];
   gender?: string | null;
   ageGroup?: string | null;
   specs?: Record<string, string> | null;
@@ -33,7 +34,8 @@ const SEARCH_TEXT_FIELDS = [
   "description",
   "brandId",
   "categoryId",
-  "color",
+  "colors",
+  "sizes",
   "gender",
   "ageGroup",
   "specs",
@@ -52,7 +54,8 @@ function toProductData(p: ProductInput, images: string[]) {
     stock: p.stock,
     categoryId: p.categoryId,
     brandId: p.brandId,
-    color: p.color ? titleCase(p.color) : null,
+    colors: (p.colors ?? []).map(titleCase),
+    sizes: p.sizes ?? [],
     gender: p.gender,
     ageGroup: p.ageGroup,
     specs: p.specs ?? Prisma.DbNull,
@@ -144,7 +147,7 @@ export const adminService = {
       });
       if (!current) throw new AppError("Product not found", 404);
 
-      const { pricePaise: newPrice, brandId, categoryId, color, specs, ...rest } = data;
+      const { pricePaise: newPrice, brandId, categoryId, colors, specs, ...rest } = data;
       const pricePaise = newPrice ?? current.pricePaise;
       const discountPercent = data.discountPercent ?? current.discountPercent;
       const offerEndsAt = data.offerEndsAt !== undefined ? data.offerEndsAt : current.offerEndsAt;
@@ -155,7 +158,7 @@ export const adminService = {
           ...rest,
           pricePaise,
           sellPaise: finalPrice(pricePaise, discountPercent, offerEndsAt),
-          ...(color !== undefined && { color: color ? titleCase(color) : null }),
+          ...(colors !== undefined && { colors: colors.map(titleCase) }),
           ...(specs !== undefined && { specs: specs ?? Prisma.DbNull }),
           ...(categoryId && { category: { connect: { id: categoryId } } }),
           ...(brandId !== undefined && {
@@ -215,7 +218,8 @@ export const adminService = {
         discountPercent: true,
         offerEndsAt: true,
         stock: true,
-        color: true,
+        colors: true,
+        sizes: true,
         gender: true,
         ageGroup: true,
         specs: true,

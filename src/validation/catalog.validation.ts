@@ -4,13 +4,6 @@ import { titleCase } from "../utils/text";
 
 const searchText = z.string().trim().min(2).max(80);
 
-export const catalogFiltersSchema = z.object({
-  query: z.object({
-    category: slug.optional(),
-    subcategory: slug.optional(),
-  }),
-});
-
 export const catalogSchema = z.object({
   query: z
     .object({
@@ -20,6 +13,7 @@ export const catalogSchema = z.object({
       section: z.enum(["trending", "featured"]).optional(),
       brand: commaList(slug).optional(),
       color: commaList(z.string().min(1).max(40).transform(titleCase)).optional(),
+      size: commaList(z.string().min(1).max(30)).optional(),
       gender: commaList(z.enum(GENDERS)).optional(),
       ageGroup: commaList(z.enum(AGE_GROUPS)).optional(),
       minPricePaise: z.coerce.number().int().min(0).max(1000000000).optional(),

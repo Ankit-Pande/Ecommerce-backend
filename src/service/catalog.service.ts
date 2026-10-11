@@ -4,6 +4,7 @@ import { prisma } from "../config/db";
 import { CACHE_SECONDS, getOrSetCache } from "../config/cache";
 import { orderByIds, pageQuery, paginate } from "../utils/paginate";
 import { ACTIVE_CATEGORY, CARD_SELECT, productCard } from "../utils/price";
+import { titleCase } from "../utils/text";
 
 type CatalogQuery = {
   q?: string;
@@ -12,6 +13,7 @@ type CatalogQuery = {
   section?: "trending" | "featured";
   brand?: string[];
   color?: string[];
+  size?: string[];
   gender?: string[];
   ageGroup?: string[];
   minPricePaise?: number;
@@ -117,7 +119,7 @@ async function matchEveryWord(words: string[]): Promise<Prisma.ProductWhereInput
         OR: [
           { name: contains },
           { description: contains },
-          { color: contains },
+          { colors: { has: titleCase(word) } },
           { brandId: { in: brands.map((b) => b.id) } },
           { categoryId: { in: categories.map((c) => c.id) } },
         ],
@@ -127,9 +129,10 @@ async function matchEveryWord(words: string[]): Promise<Prisma.ProductWhereInput
   return { AND: conditions };
 }
 
-// Search text se kaam ke shabd (max 6).
+// Search text se kaam ke shabd (max 6); "tshirt" / "t shirt" naam me "T-Shirt" likha hota hai.
 function searchWords(text: string): string[] {
   return text
+    .replace(/\bt\s?shirt/gi, "t-shirt")
     .split(/\s+/)
     .filter((word) => word.length >= MIN_SEARCH_LENGTH)
     .slice(0, 6);
@@ -190,7 +193,8 @@ export const catalogService = {
     return getOrSetCache(`catalog:${cacheKey}`, CACHE_SECONDS, async () => {
       const filters = commonFilters(query);
       if (query.brand) filters.push({ brand: { slug: { in: query.brand }, isActive: true } });
-      if (query.color) filters.push({ color: { in: query.color } });
+      if (query.color) filters.push({ colors: { hasSome: query.color } });
+      if (query.size) filters.push({ sizes: { hasSome: query.size } });
       if (query.gender) filters.push({ gender: { in: query.gender } });
       if (query.ageGroup) filters.push({ ageGroup: { in: query.ageGroup } });
       if (minPaise !== undefined) filters.push({ sellPaise: { gte: minPaise } });
@@ -221,31 +225,6 @@ export const catalogService = {
 
       const page = paginate(rows, query.limit);
       return { items: page.items.map(productCard), nextCursor: page.nextCursor };
-    });
-  },
-
-  // Sidebar filter: is category ke brands aur colours.
-  async filters(query: { category?: string; subcategory?: string }) {
-    const cacheKey = `filters:${query.category ?? ""}:${query.subcategory ?? ""}`;
-    return getOrSetCache(cacheKey, CACHE_SECONDS, async () => {
-      const where: Prisma.ProductWhereInput = { AND: commonFilters(query) };
-      const [brands, colors] = await Promise.all([
-        prisma.brand.findMany({
-          where: { isActive: true, products: { some: where } },
-          select: { id: true, name: true, slug: true },
-          orderBy: { name: "asc" },
-        }),
-        prisma.product.groupBy({
-          by: ["color"],
-          where: { AND: [where, { color: { not: null } }] },
-          orderBy: { color: "asc" },
-        }),
-      ]);
-
-      return {
-        brands,
-        colors: colors.map((row) => row.color as string),
-      };
     });
   },
 };

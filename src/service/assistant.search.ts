@@ -88,7 +88,9 @@ const PERSON_WORDS = new Set(["men", "women", "kid", "boy", "girl"]);
 // "kitne jeans hai", "how many phones": ginti poochhi hai.
 const COUNT_WORDS = /\b(kitne|kitna|kitni|how many|count)\b/i;
 
-const SIZE_WORDS = /\b(?:size|uk)\s*(\d{1,2})\b|\b(\d{1,2})\s*(?:number|no|size|uk)\b/;
+// "size 9", "size M", "9 number", "4-5 years" (bachchon ka size).
+const SIZE_WORDS =
+  /\b(?:size|uk)\s*(\d{1,2}|xxl|xl|xs|s|m|l)\b|\b(\d{1,2})\s*(?:number|no|size|uk)\b|\b(\d{1,2})\s*-\s*(\d{1,2})\s*(?:years?|yrs?|saal|sal)\b/;
 const COUNT_AT_START = /^\s*(?:show me|show|top|mujhe|muje|sirf|only)?\s*(\d{1,2})(?=\s|$)/i;
 const UNIT_AFTER_COUNT =
   /^\s*(?:number|no|size|uk|inch|gb|tb|kg|ton|saal|sal|years?|months?|mahine|mahina|din|days?|litre|liter|ml|watt|k[aie])\b/i;
@@ -128,9 +130,9 @@ async function getVocabulary(): Promise<Vocabulary> {
     const [brands, categories, colors] = await Promise.all([
       prisma.brand.findMany({ where: { isActive: true }, select: { id: true, name: true } }),
       prisma.category.findMany({ where: { isActive: true }, select: { id: true, name: true, parentId: true } }),
-      prisma.product.groupBy({ by: ["color"], where: { isActive: true, color: { not: null } } }),
+      prisma.$queryRaw<{ color: string }[]>`SELECT DISTINCT unnest("colors") AS color FROM "Product" WHERE "isActive"`,
     ]);
-    return { brands, categories, colors: colors.map((row) => row.color as string) };
+    return { brands, categories, colors: colors.map((row) => row.color) };
   });
 }
 
@@ -142,8 +144,8 @@ const isMentioned = (nameWords: string[], asked: Set<string>) =>
 const markUsed = (used: Set<string>, nameWords: string[]) =>
   [...nameWords, nameWords.join("")].forEach((word) => used.add(word));
 
-// Category ka shabd wahi hai, ya jude shabd ka aakhri hissa ("phone" = "smartphone", "watch" = "smartwatch").
-const isSameWord = (name: string, word: string) => name === word || (word.length >= 4 && name.endsWith(word));
+// Category ka shabd wahi hai, ya "smart" ke saath juda ("phone" = "smartphone", "watch" = "smartwatch"; "headphone" nahi).
+const isSameWord = (name: string, word: string) => name === word || name === `smart${word}`;
 
 // Category ke saath uski andar wali categories bhi (jaise "Footwear" ke saath "Sneakers").
 function withChildren(vocabulary: Vocabulary, ids: string[]): string[] {
@@ -175,7 +177,11 @@ export async function readQuestion(question: string): Promise<Question> {
   const vocabulary = await getVocabulary();
   const used = new Set<string>();
   // "5000 mah", "16 gb" -> "5000mah", "16gb" (specs isi tarah save hain).
-  let text = counted.text.toLowerCase().replace(/(\d+)\s+(gb|tb|mah|mp|hz|w)\b/g, "$1$2");
+  // "mobile" bolte hain to phone chahiye, tablet nahi.
+  let text = counted.text
+    .toLowerCase()
+    .replace(/(\d+)\s+(gb|tb|mah|mp|hz|w)\b/g, "$1$2")
+    .replace(/\bmobiles?\b/g, "smartphone");
   const size = text.match(SIZE_WORDS);
   if (size) text = text.replace(size[0], " ");
 
@@ -232,6 +238,7 @@ export async function readQuestion(question: string): Promise<Question> {
       vocabulary,
       chosen.map((category) => category.id),
     );
+    q.categoryNames = chosen.map((category) => categoryLabel(category.name));
     q.labels.category = [...new Set(chosen.map((category) => categoryLabel(category.name)))].join(", ");
   }
   if (who) {
@@ -250,7 +257,7 @@ export async function readQuestion(question: string): Promise<Question> {
     q.labels[special.filter] = special.label;
   }
   if (size) {
-    q.size = size[1] ?? size[2];
+    q.size = size[3] ? `${size[3]}-${size[4]} Years` : (size[1] ?? size[2]).toUpperCase();
     q.labels.size = `size ${q.size}`;
   }
   if (budget.minPrice) q.minPaise = toPaise(budget.minPrice);
