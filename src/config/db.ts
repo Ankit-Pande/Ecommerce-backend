@@ -2,7 +2,11 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import { logger } from "./winston";
 import { AppError } from "../utils/appError";
 
-export const prisma = new PrismaClient({ log: ["warn", "error"] });
+// Remote DB (jaise Supabase) par har query me kuch sau ms lagte hain, isliye transaction ko 20 second tak chalne do.
+export const prisma = new PrismaClient({
+  log: ["warn", "error"],
+  transactionOptions: { maxWait: 10_000, timeout: 20_000 },
+});
 
 // Server start hote hi DB se jodo; na jude to app band.
 export async function connectDB(): Promise<void> {

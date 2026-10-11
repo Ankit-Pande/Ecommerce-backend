@@ -142,6 +142,20 @@ const TOOLS: Record<string, Tool> = {
     },
   },
 
+  clear_cart: {
+    declaration: { name: "clear_cart", description: "Remove every item from the user's cart. The user must confirm first." },
+    schema: z.object({}),
+    async confirmText(user) {
+      const cart = await cartService.getCart(user.userId);
+      if (cart.items.length === 0) throw new AppError("Cart pehle se khali hai.", 400);
+      return `Cart ke saare ${cart.items.length} items hata du?`;
+    },
+    async run(user) {
+      await cartService.clear(user.userId);
+      return { data: { cleared: true } };
+    },
+  },
+
   list_orders: {
     declaration: {
       name: "list_orders",

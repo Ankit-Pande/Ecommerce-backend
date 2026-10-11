@@ -21,6 +21,7 @@ export type Question = SearchFilters & {
   labels: Record<string, string>;
   sort?: Sort;
   pageSize?: number;
+  askCount?: boolean;
 };
 type Vocabulary = {
   brands: { id: string; name: string }[];
@@ -68,7 +69,7 @@ const SORT_WORDS: { pattern: RegExp; sort: Sort; label: string }[] = [
 
 const SPECIAL_WORDS: { pattern: RegExp; filter: "discount" | "trending" | "featured"; label: string }[] = [
   { pattern: /\b(offers?|discount|sale|deals?)\b/, filter: "discount", label: "offers" },
-  { pattern: /\b(trending|popular)\b/, filter: "trending", label: "trending" },
+  { pattern: /\b(tr[ae]n?d+i?ng|trendy|popular)\b/, filter: "trending", label: "trending" },
   { pattern: /\b(featured)\b/, filter: "featured", label: "featured" },
 ];
 
@@ -79,10 +80,13 @@ const FILLER_WORDS = new Set(
   kharidna lena is are am my to of in on at by from all any this that it very can you your have has what which kya kaun
   kaunsa kaunsi kaise kitna kitne kahan ye yeh wo woh isme usme products product item items saman samaan rupee rupees
   rupaye rupay rs hi hello hey namaste joda jodi jola pair number size no mast super cool stylish sundar beautiful
-  awesome available milega milegi tak andar ander niche neeche upar price range`.split(/\s+/),
+  awesome available milega milegi tak andar ander niche neeche upar price range list sab sabhi saare sare how many count`.split(/\s+/),
 );
 
 const PERSON_WORDS = new Set(["men", "women", "kid", "boy", "girl"]);
+
+// "kitne jeans hai", "how many phones": ginti poochhi hai.
+const COUNT_WORDS = /\b(kitne|kitna|kitni|how many|count)\b/i;
 
 const SIZE_WORDS = /\b(?:size|uk)\s*(\d{1,2})\b|\b(\d{1,2})\s*(?:number|no|size|uk)\b/;
 const COUNT_AT_START = /^\s*(?:show me|show|top|mujhe|muje|sirf|only)?\s*(\d{1,2})(?=\s|$)/i;
@@ -167,10 +171,11 @@ function readCount(text: string): { text: string; count?: number } {
 export async function readQuestion(question: string): Promise<Question> {
   const budget = readBudget(question);
   const counted = readCount(budget.text);
-  const q: Question = { words: [], meaning: budget.text, labels: {} };
+  const q: Question = { words: [], meaning: budget.text, labels: {}, askCount: COUNT_WORDS.test(question) };
   const vocabulary = await getVocabulary();
   const used = new Set<string>();
-  let text = counted.text.toLowerCase();
+  // "5000 mah", "16 gb" -> "5000mah", "16gb" (specs isi tarah save hain).
+  let text = counted.text.toLowerCase().replace(/(\d+)\s+(gb|tb|mah|mp|hz|w)\b/g, "$1$2");
   const size = text.match(SIZE_WORDS);
   if (size) text = text.replace(size[0], " ");
 
@@ -237,6 +242,8 @@ export async function readQuestion(question: string): Promise<Question> {
   if (sort) {
     q.sort = sort.sort;
     q.labels.sort = sort.label;
+  } else if (budget.bare) {
+    q.sort = "price_desc"; // "10k phone": budget ke sabse paas wale pehle
   }
   for (const special of specials) {
     q[special.filter] = true;
@@ -308,28 +315,34 @@ function wordMatch(word: Word): Prisma.Sql {
   return Prisma.sql`(${inName} OR ${inCategory(word)})`;
 }
 
+// Sawal ki DB shartein (filters + kam se kam itne shabd mile) aur shabd ke hisaab se kram.
+function matchSql(q: Question): { where: Prisma.Sql[]; wordOrder: Prisma.Sql[] } {
+  const where = productFilterSql(q);
+  const wordOrder: Prisma.Sql[] = [];
+  if (q.words.length > 0) {
+    const matches = q.words.map(wordMatch);
+    const hits = Prisma.join(
+      matches.map((match) => Prisma.sql`(${match})::int`),
+      " + ",
+    );
+    const need = q.words.length <= 2 ? q.words.length : Math.ceil(q.words.length / 2);
+    where.push(Prisma.sql`(${Prisma.join(matches, " OR ")})`, Prisma.sql`(${hits}) >= ${need}`);
+    wordOrder.push(Prisma.sql`(${hits}) DESC`);
+    const categoryWords = q.words.filter((word) => word.categoryIds.length > 0);
+    if (categoryWords.length > 0) {
+      const categoryHits = categoryWords.map((word) => Prisma.sql`(${inCategory(word)})::int`);
+      wordOrder.push(Prisma.sql`(${Prisma.join(categoryHits, " + ")}) DESC`);
+    }
+  }
+  return { where, wordOrder };
+}
+
 // DB search: jitne zyada shabd mile utna upar, phir category wale (1-2 shabd ho to sab, zyada ho to aadhe); har category (aur kiske liye na bola ho to Men, Women, Kids) ke baari-baari (Redis cache).
 async function dbMatches(q: Question): Promise<Card[]> {
-  const sort = sortOf(q);
-  const key = hashOf({ ...q, meaning: undefined, labels: undefined, pageSize: undefined });
+  const key = hashOf({ ...q, meaning: undefined, labels: undefined, pageSize: undefined, askCount: undefined });
   return getOrSetCache(`ai:db:${key}`, CACHE_SECONDS, async () => {
-    const where = productFilterSql(q);
-    const order = [SORT_SQL[sort], Prisma.sql`p."id" DESC`];
-    if (q.words.length > 0) {
-      const matches = q.words.map(wordMatch);
-      const hits = Prisma.join(
-        matches.map((match) => Prisma.sql`(${match})::int`),
-        " + ",
-      );
-      const need = q.words.length <= 2 ? q.words.length : Math.ceil(q.words.length / 2);
-      where.push(Prisma.sql`(${Prisma.join(matches, " OR ")})`, Prisma.sql`(${hits}) >= ${need}`);
-      const categoryWords = q.words.filter((word) => word.categoryIds.length > 0);
-      if (categoryWords.length > 0) {
-        const categoryHits = categoryWords.map((word) => Prisma.sql`(${inCategory(word)})::int`);
-        order.unshift(Prisma.sql`(${Prisma.join(categoryHits, " + ")}) DESC`);
-      }
-      order.unshift(Prisma.sql`(${hits}) DESC`);
-    }
+    const { where, wordOrder } = matchSql(q);
+    const order = [...wordOrder, SORT_SQL[sortOf(q)], Prisma.sql`p."id" DESC`];
     const groups =
       q.gender || q.ageGroup ? Prisma.sql`p."categoryId"` : Prisma.sql`p."categoryId", p."gender", p."ageGroup"`;
     order.unshift(Prisma.sql`ROW_NUMBER() OVER (PARTITION BY ${groups} ORDER BY ${Prisma.join(order, ", ")})`);
@@ -340,6 +353,14 @@ async function dbMatches(q: Question): Promise<Card[]> {
       LIMIT ${MAX_RESULTS}`;
     return cardsInOrder(rows.map((row) => row.id));
   });
+}
+
+// Sawal se milte kitne products store me hain ("kitne jeans hai").
+async function countMatches(q: Question): Promise<number> {
+  const { where } = matchSql(q);
+  const [row] = await prisma.$queryRaw<{ total: number }[]>`
+    SELECT count(*)::int AS total FROM "Product" p WHERE ${Prisma.join(where, " AND ")}`;
+  return row?.total ?? 0;
 }
 
 // Cards ko sawal ke sort (rating, price, offer) ke hisaab se lagao.
@@ -390,11 +411,14 @@ function isMixed(cards: Card[]): boolean {
   return (genders.has("Men") && genders.has("Women")) || (ages.has("Kids") && ages.has("Adult"));
 }
 
-// Ek page ke product (5, ya zyada maange to 10); kiske liye na bola ho aur results mix hon to askWho (Men/Women/Kids button).
+// Ek page ke product (5, ya zyada maange to 10); kiske liye na bola ho aur results mix hon to askWho (Men/Women/Kids button); ginti poochhi ho to total.
 export async function findProducts(q: Question, page: number) {
   const size = q.pageSize ?? PAGE_SIZE;
   const { cards, similar, used } = await searchAll(q);
+  const asked = q.askCount && page === 0 && !similar;
+  const total = asked ? (cards.length < MAX_RESULTS ? cards.length : await countMatches(used)) : undefined;
   return {
+    total,
     products: cards.slice(page * size, (page + 1) * size),
     hasMore: cards.length > (page + 1) * size,
     askWho: page === 0 && !q.gender && !q.ageGroup && isMixed(cards),

@@ -35,6 +35,7 @@ const BLOCKED = "Assistant blocked for 24 hours due to unsafe messages.";
 
 const REPLIES = {
   found: { hi: "Ye rahe products:", en: "Here are the products:" },
+  count: { hi: "Store me {n} products mile:", en: "{n} products found in the store:" },
   similar: {
     hi: '"{words}" ka exact match nahi mila, ye milte-julte products dekhiye:',
     en: 'No exact match for "{words}", here are similar products:',
@@ -85,6 +86,9 @@ const ACTION_WORDS =
 
 const MORE_WORDS =
   /^(show( me)? more|more|next|aur|or|aage|baaki|baki)( \d+)?( products?| items?)?( dikhao| dikha| bhejo| batao| do| please| pls)?[\s.!?]*$/i;
+
+// "cart khali karo", "empty my cart": seedha confirm poochho, AI ki zaroorat nahi.
+const CLEAR_CART = /\bcart\b.*\b(khali|khaali|empty|clear|saaf|saf)\b|\b(empty|clear)\b.*\bcart\b/i;
 
 const SMALL_TALK =
   /^(hi+|hello+|hey+|hlo|namaste|namaskar|good (morning|afternoon|evening|night)|thanks?|thank you|thanku|thx|ok+|okay|ac+h+a|theek hai|thik hai|bye|hmm+|help)[\s.!?]*$/i;
@@ -143,7 +147,11 @@ async function productAnswer(q: Question, page: number, lang: Lang): Promise<Cha
   const { words, ...labels } = found.labels;
   let reply = REPLIES.more[lang];
   if (page === 0) {
-    const sentence = found.similar ? REPLIES.similar[lang].replace("{words}", words) : REPLIES.found[lang];
+    const sentence = found.similar
+      ? REPLIES.similar[lang].replace("{words}", words)
+      : found.total !== undefined
+        ? REPLIES.count[lang].replace("{n}", String(found.total))
+        : REPLIES.found[lang];
     const shown = found.similar ? labels : found.labels;
     reply = [Object.values(shown).join(" · "), sentence, found.askWho ? REPLIES.askWho[lang] : ""]
       .filter(Boolean)
@@ -222,6 +230,15 @@ async function runConfirmedAction(user: ToolUser | null, confirm: boolean, lang:
   }
 }
 
+// Kaam se pehle "Confirm?" poochho: tool aur uske inputs 5 minute ke liye rakh lo.
+async function askToConfirm(user: ToolUser, name: string, args: unknown): Promise<ChatReply> {
+  const picked = findTool(user, name, args);
+  if (!picked?.tool.confirmText) throw new AppError("Invalid tool or arguments");
+  const text = await picked.tool.confirmText(user, picked.args);
+  await redis.set(`ai:pending:${user.userId}`, JSON.stringify({ name, args: picked.args }), "EX", CONFIRM_WAIT_SECONDS);
+  return { reply: text, confirm: true };
+}
+
 // AI se baat: AI jo function maange hum chalate hain, max 4 baar.
 async function askAi(user: ToolUser, messages: Message[], lang: Lang): Promise<ChatReply> {
   const start = messages.findIndex((m) => m.role === "user");
@@ -250,16 +267,7 @@ async function askAi(user: ToolUser, messages: Message[], lang: Lang): Promise<C
       let response: Record<string, unknown>;
       try {
         if (!picked) throw new AppError("Invalid tool or arguments");
-        if (picked.tool.confirmText) {
-          const text = await picked.tool.confirmText(user, picked.args);
-          await redis.set(
-            `ai:pending:${user.userId}`,
-            JSON.stringify({ name, args: picked.args }),
-            "EX",
-            CONFIRM_WAIT_SECONDS,
-          );
-          return { reply: text, confirm: true };
-        }
+        if (picked.tool.confirmText) return await askToConfirm(user, name, functionCall!.args);
         const output = await picked.tool.run(user, picked.args);
         if (output.products) products.push(...output.products);
         response = { result: output.data };
@@ -297,6 +305,9 @@ export const assistantService = {
 
     const nothingFound = search ? notFoundText(search.question, lang) : REPLIES.help[lang];
     if (!user) return { reply: isAction ? REPLIES.login[lang] : nothingFound };
+    if (CLEAR_CART.test(question)) {
+      return askToConfirm(user, "clear_cart", {}).catch((error) => ({ reply: errorText(error) }));
+    }
     if (!geminiReady || !/[a-zऀ-ॿ]{3}/i.test(question)) return { reply: nothingFound };
     const limitReply = await aiLimitReply(user, lang);
     if (limitReply) return { reply: limitReply };

@@ -143,7 +143,7 @@ async function cancelAndReturnStock(db: Prisma.TransactionClient, orderId: strin
 // Isi checkout ka order pehle ban chuka hai to wahi lautao (address ya payment alag ho to error).
 function returnSameOrder(order: Order, addressId: string, paymentMethod: PaymentMethod) {
   if (order.addressId !== addressId || order.paymentMethod !== paymentMethod) {
-    throw new AppError("Idempotency key used for another checkout", 409);
+    throw new AppError("This order was already placed. Please check My orders.", 409);
   }
   return checkoutResponse(order);
 }
