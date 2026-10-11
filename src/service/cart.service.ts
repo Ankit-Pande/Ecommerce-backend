@@ -99,6 +99,14 @@ export const cartService = {
     return getCart(userId);
   },
 
+  // Poora cart khali karo.
+  async clear(userId: string) {
+    await prisma.$transaction(async (db) => {
+      await lockUser(db, userId);
+      await db.cartItem.deleteMany({ where: { cart: { userId } } });
+    });
+  },
+
   // Ek item cart se hatao.
   async removeItem(userId: string, productId: string) {
     await prisma.$transaction(async (db) => {

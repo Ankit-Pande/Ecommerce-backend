@@ -336,8 +336,10 @@ async function main() {
   const liveProducts = products.filter((p) => p.isActive);
   const popular = liveProducts.slice(0, 400);
 
+  // Orders sirf customers ke, taaki admin ke naam pe unpaid order na ho aur uska checkout na ruke.
+  const customers = users.filter((u) => u.role === "USER");
   for (let i = 0; i < TOTAL_ORDERS; i++) {
-    const user = pick(users);
+    const user = pick(customers);
     const userAddresses = addresses.filter((a) => a.userId === user.id);
     const address = pick(userAddresses);
 

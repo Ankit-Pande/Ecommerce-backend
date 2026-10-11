@@ -42,6 +42,13 @@ const PRICE_ABOVE = new RegExp(
   "i",
 );
 
+// Bina "under/tak" wala budget: "10k phone", "phone 15000", "₹500 wala"; "16 gb", "5000 mah" jaise specs nahi.
+const PRICE_BARE = new RegExp(
+  String.raw`(₹|\brs\.?)?\s*\b(\d[\d,]*(?:\.\d+)?)\s*(k|hazar|lakh|lac)?\b(?!\s*(?:gb|tb|mb|mah|mp|hz|inch|inches|w|watt|ml|kg|cm|mm|years?|saal|sal|months?|model|number|no|size|uk)\b)`,
+  "gi",
+);
+const MIN_BARE_PRICE = 500;
+
 const MIN_SEARCH_LENGTH = 2;
 
 export const toPaise = (rupees?: number) => (rupees === undefined ? undefined : Math.round(rupees * 100));
@@ -53,8 +60,9 @@ function toRupees(digits: string, unit?: string): number {
   return value * unitValue;
 }
 
-// Search text se price nikalo ("under 2000", "10k ke niche", "1000 ka", "500 se upar"); ₹100 se kam ko price mat maano. Bacha text search ke liye do.
-export function readBudget(search: string): { text: string; minPrice?: number; maxPrice?: number } {
+// Search text se price nikalo ("under 2000", "10k ke niche", "1000 ka", "500 se upar", "10k phone"); ₹100 se kam ko price mat maano. Bacha text search ke liye do.
+// bare: budget bina "under/tak" ke likha tha, to us price ke paas wale products pehle dikhane chahiye.
+export function readBudget(search: string): { text: string; minPrice?: number; maxPrice?: number; bare?: boolean } {
   const tidy = (text: string) =>
     text
       .replace(/₹|\brs\b\.?/gi, " ")
@@ -77,10 +85,20 @@ export function readBudget(search: string): { text: string; minPrice?: number; m
   } else if (below) {
     budget = { maxPrice: toRupees(below[1] ?? below[3], below[2] ?? below[4]) };
     priceText = below[0];
+  } else {
+    for (const bare of search.matchAll(PRICE_BARE)) {
+      const price = toRupees(bare[2], bare[3]);
+      if (bare[1] || bare[3] || price >= MIN_BARE_PRICE) {
+        budget = { maxPrice: price };
+        priceText = bare[0];
+        break;
+      }
+    }
   }
 
   if (!priceText || (budget.maxPrice ?? budget.minPrice ?? 0) < 100) return { text: tidy(search) };
-  return { text: tidy(search.replace(priceText, " ")), ...budget };
+  const bare = !range && !above && !below;
+  return { text: tidy(search.replace(priceText, " ")), ...budget, ...(bare && { bare }) };
 }
 
 // Har shabd naam, colour, brand ya category me kahin mile; brand aur category pehle dhoondho taaki search tez ho.
