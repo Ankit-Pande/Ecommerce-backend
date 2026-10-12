@@ -2,7 +2,6 @@ import "dotenv/config";
 import { z } from "zod";
 
 const isProduction = (process.env.NODE_ENV ?? "production") === "production";
-
 const requiredOnLive = isProduction ? z.string().min(1) : z.string().optional();
 
 const schema = z
@@ -13,23 +12,19 @@ const schema = z
     TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(1),
     API_RATE_MAX: z.coerce.number().int().positive().default(300),
 
-    DATABASE_URL: z.string().url("Invalid DATABASE_URL"),
-    DIRECT_URL: z.string().url("Invalid DIRECT_URL"),
-    REDIS_URL: z.string().url("Invalid REDIS_URL"),
+    DATABASE_URL: z.string().url(),
+    DIRECT_URL: z.string().url(),
+    REDIS_URL: z.string().url(),
 
-    FRONTEND_ORIGINS: z.string().min(1, "FRONTEND_ORIGINS is required"),
+    FRONTEND_ORIGINS: z.string().min(1),
     SUPER_ADMIN_PHONE: z
       .string()
       .regex(/^[6-9]\d{9}$/)
       .optional(),
 
-    JWT_ACCESS_SECRET: z.string().min(32, "JWT_ACCESS_SECRET must be at least 32 chars"),
-    JWT_REFRESH_SECRET: z.string().min(32, "JWT_REFRESH_SECRET must be at least 32 chars"),
-    OTP_SECRET: z.string().min(32, "OTP_SECRET must be at least 32 chars"),
-    JWT_ACCESS_EXPIRY: z
-      .string()
-      .regex(/^[1-9]\d*[smhd]$/)
-      .default("15m"),
+    JWT_ACCESS_SECRET: z.string().min(32),
+    JWT_REFRESH_SECRET: z.string().min(32),
+    OTP_SECRET: z.string().min(32),
 
     MSG91_AUTH_KEY: requiredOnLive,
     MSG91_SENDER_ID: requiredOnLive,
@@ -43,8 +38,6 @@ const schema = z
     RAZORPAY_KEY_ID: requiredOnLive,
     RAZORPAY_KEY_SECRET: requiredOnLive,
     RAZORPAY_WEBHOOK_SECRET: requiredOnLive,
-    PAYMENT_WINDOW_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
-    MAX_PENDING_ORDERS: z.coerce.number().int().min(1).max(10).default(2),
 
     GEMINI_API_KEY: z.string().optional(),
     GEMINI_CHAT_MODEL: z.string().default("gemini-3.1-flash-lite"),
@@ -63,8 +56,7 @@ const schema = z
 const result = schema.safeParse(process.env);
 
 if (!result.success) {
-  console.error("Invalid environment variables:");
-  console.error(result.error.flatten());
+  console.error("Invalid environment variables:", result.error.flatten());
   process.exit(1);
 }
 

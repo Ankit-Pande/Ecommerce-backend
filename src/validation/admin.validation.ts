@@ -2,15 +2,10 @@ import { z } from "zod";
 import { AGE_GROUPS, GENDERS, idParams, orderStatus, pageParams, queryBoolean, slug, uuid } from "./common";
 
 const formBoolean = z.preprocess((v) => (v === "true" ? true : v === "false" ? false : v), z.boolean());
-
-// Form me khaali string bhejo = field hatao (null).
 const emptyToNull = (v: unknown) => (v === "" ? null : v);
-
-// Fixed list wale field. Khaali bhejo to field hat jaata hai.
 const clearableEnum = <T extends readonly [string, ...string[]]>(values: T) =>
   z.preprocess(emptyToNull, z.enum(values).nullable());
 
-// Specs form me "RAM: 16GB" jaisi lines (ya bulk me object) -> { RAM: "16GB" }; khaali bhejo to hat jaate hain.
 function readSpecs(value: unknown) {
   if (typeof value !== "string") return value;
   const lines = value
@@ -21,7 +16,6 @@ function readSpecs(value: unknown) {
   return Object.fromEntries(lines.map(([key, ...rest]) => [key.trim(), rest.join(":").trim()]));
 }
 
-// Options form me "S, M, L" (ya bulk me list) -> ["S", "M", "L"]; khaali bhejo to koi option nahi.
 const optionList = z.preprocess(
   (v) => (typeof v === "string" ? v.split(",") : v),
   z
@@ -38,6 +32,8 @@ const specs = z.preprocess(
     .nullable(),
 );
 
+const futureDate = z.coerce.date().refine((date) => date.getTime() > Date.now(), "offerEndsAt must be in the future");
+
 const productFields = {
   name: z.string().trim().min(2).max(150),
   slug,
@@ -52,10 +48,7 @@ const productFields = {
   gender: clearableEnum(GENDERS).optional(),
   ageGroup: clearableEnum(AGE_GROUPS).optional(),
   specs: specs.optional(),
-  offerEndsAt: z
-    .preprocess(emptyToNull, z.coerce.date().nullable())
-    .refine((date) => !date || date.getTime() > Date.now(), "offerEndsAt must be in the future")
-    .optional(),
+  offerEndsAt: z.preprocess(emptyToNull, futureDate.nullable()).optional(),
   isTrending: formBoolean.optional(),
   isFeatured: formBoolean.optional(),
 };
@@ -78,23 +71,22 @@ export const bulkCreateProductSchema = z.object({
   }),
 });
 
-export const adminListProductSchema = z.object({
-  query: z.object({
-    q: z.string().trim().max(100).optional(),
-    ...pageParams(),
-  }),
-});
-
-export const idParamSchema = z.object({ params: idParams });
-
-export const createCategorySchema = z.object({
+export const saleSchema = z.object({
   body: z
     .object({
-      name: z.string().trim().min(2).max(80),
-      slug,
-      parentId: uuid.optional(),
+      categoryId: uuid.optional(),
+      discountPercent: z.number().int().min(0).max(90),
+      offerEndsAt: futureDate.optional(),
     })
     .strict(),
+});
+
+export const adminListProductSchema = z.object({
+  query: z.object({ q: z.string().trim().max(100).optional(), ...pageParams() }),
+});
+
+export const createCategorySchema = z.object({
+  body: z.object({ name: z.string().trim().min(2).max(80), slug, parentId: uuid.optional() }).strict(),
 });
 
 export const updateCategorySchema = z.object({
@@ -126,12 +118,7 @@ const bannerLink = z
   );
 
 export const createBannerSchema = z.object({
-  body: z
-    .object({
-      link: bannerLink.optional(),
-      position: z.coerce.number().int().min(0).default(0),
-    })
-    .strict(),
+  body: z.object({ link: bannerLink.optional(), position: z.coerce.number().int().min(0).default(0) }).strict(),
 });
 
 export const updateBannerSchema = z.object({
@@ -145,25 +132,8 @@ export const updateBannerSchema = z.object({
     .strict(),
 });
 
-export const saleSchema = z.object({
-  body: z
-    .object({
-      categoryId: uuid.optional(),
-      discountPercent: z.number().int().min(0).max(90),
-      offerEndsAt: z.coerce
-        .date()
-        .refine((date) => date.getTime() > Date.now(), "offerEndsAt must be in the future")
-        .optional(),
-    })
-    .strict(),
-});
-
 export const adminListOrderSchema = z.object({
-  query: z.object({
-    status: orderStatus.optional(),
-    needsReview: queryBoolean.optional(),
-    ...pageParams(),
-  }),
+  query: z.object({ status: orderStatus.optional(), needsReview: queryBoolean.optional(), ...pageParams() }),
 });
 
 export const updateOrderStatusSchema = z.object({
@@ -172,10 +142,7 @@ export const updateOrderStatusSchema = z.object({
 });
 
 export const adminListUserSchema = z.object({
-  query: z.object({
-    q: z.string().trim().max(20).optional(),
-    ...pageParams(),
-  }),
+  query: z.object({ q: z.string().trim().max(20).optional(), ...pageParams() }),
 });
 
 export const blockUserSchema = z.object({

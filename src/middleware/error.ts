@@ -5,15 +5,14 @@ import { ZodError } from "zod";
 import { logger } from "../config/winston";
 import { AppError } from "../utils/appError";
 
-// Har error ka saaf message user ko bhejo; andar ki detail sirf log me jaye.
-export const errorHandler = (err: unknown, _req: Request, res: Response, next: NextFunction) => {
+export function errorHandler(err: unknown, _req: Request, res: Response, next: NextFunction) {
   if (res.headersSent) return next(err);
 
   const send = (status: number, message: string) => res.status(status).json({ success: false, message });
 
-  const jsonError = (err as { type?: string })?.type;
-  if (jsonError === "entity.parse.failed") return send(400, "Invalid JSON");
-  if (jsonError === "entity.too.large") return send(413, "Request too large");
+  const bodyError = (err as { type?: string })?.type;
+  if (bodyError === "entity.parse.failed") return send(400, "Invalid JSON");
+  if (bodyError === "entity.too.large") return send(413, "Request too large");
 
   if (err instanceof ZodError) {
     const message = err.issues
@@ -40,4 +39,4 @@ export const errorHandler = (err: unknown, _req: Request, res: Response, next: N
 
   logger.error("Unexpected error", { error: err });
   return send(500, "Internal server error");
-};
+}

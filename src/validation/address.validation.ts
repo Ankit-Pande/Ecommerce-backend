@@ -16,9 +16,4 @@ const addressBody = z
 
 export const createAddressSchema = z.object({ body: addressBody });
 
-export const updateAddressSchema = z.object({
-  params: idParams,
-  body: addressBody.partial(),
-});
-
-export const addressIdSchema = z.object({ params: idParams });
+export const updateAddressSchema = z.object({ params: idParams, body: addressBody.partial() });

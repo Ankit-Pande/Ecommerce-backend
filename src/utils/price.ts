@@ -1,35 +1,11 @@
 import { Prisma } from "@prisma/client";
 
+const LOW_STOCK_AT = 5;
+
 export const ACTIVE_CATEGORY = {
   isActive: true,
   OR: [{ parentId: null }, { parent: { isActive: true } }],
 } satisfies Prisma.CategoryWhereInput;
-
-const LOW_STOCK_AT = 5;
-
-// Aaj ka discount: offer ki date nikal gayi to 0.
-function currentDiscount(discountPercent: number, offerEndsAt?: Date | null): number {
-  if (offerEndsAt && offerEndsAt.getTime() <= Date.now()) return 0;
-  return discountPercent;
-}
-
-// Discount ke baad ka price (paise me); discount poore rupee me katta hai, taaki ₹259.48 jaisa daam na bane.
-export function finalPrice(pricePaise: number, discountPercent: number, offerEndsAt?: Date | null): number {
-  const percent = currentDiscount(discountPercent, offerEndsAt);
-  return pricePaise - Math.round((pricePaise * percent) / 10000) * 100;
-}
-
-// Customer ko poora stock number nahi, sirf "hai / kam hai / khatam" dikhta hai.
-export function stockStatus(stock: number): "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK" {
-  if (stock <= 0) return "OUT_OF_STOCK";
-  if (stock <= LOW_STOCK_AT) return "LOW_STOCK";
-  return "IN_STOCK";
-}
-
-// Average rating (jaise 4.3) aur kitne logon ne di.
-function ratingInfo(sum: number, count: number) {
-  return { average: count === 0 ? 0 : Math.round((sum / count) * 10) / 10, count };
-}
 
 export const CARD_SELECT = {
   id: true,
@@ -46,11 +22,25 @@ export const CARD_SELECT = {
   colors: true,
 } satisfies Prisma.ProductSelect;
 
-// Size ya ek se zyada rang ho to customer ko pehle chunna padega.
-export const needsChoice = (p: { sizes: string[]; colors: string[] }) => p.sizes.length > 0 || p.colors.length > 1;
+type CardRow = Prisma.ProductGetPayload<{ select: typeof CARD_SELECT }>;
 
-// Har jagah (home, catalog, cart) product card ek jaisa dikhe.
-export function productCard(p: Prisma.ProductGetPayload<{ select: typeof CARD_SELECT }>) {
+function currentDiscount(discountPercent: number, offerEndsAt?: Date | null): number {
+  if (offerEndsAt && offerEndsAt.getTime() <= Date.now()) return 0;
+  return discountPercent;
+}
+
+export function finalPrice(pricePaise: number, discountPercent: number, offerEndsAt?: Date | null): number {
+  const percent = currentDiscount(discountPercent, offerEndsAt);
+  return pricePaise - Math.round((pricePaise * percent) / 10000) * 100;
+}
+
+export function stockStatus(stock: number): "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK" {
+  if (stock <= 0) return "OUT_OF_STOCK";
+  if (stock <= LOW_STOCK_AT) return "LOW_STOCK";
+  return "IN_STOCK";
+}
+
+export function productCard(p: CardRow) {
   return {
     id: p.id,
     name: p.name,
@@ -61,7 +51,10 @@ export function productCard(p: Prisma.ProductGetPayload<{ select: typeof CARD_SE
     discountPercent: currentDiscount(p.discountPercent, p.offerEndsAt),
     finalPricePaise: finalPrice(p.pricePaise, p.discountPercent, p.offerEndsAt),
     stockStatus: stockStatus(p.stock),
-    rating: ratingInfo(p.ratingSum, p.ratingCount),
-    hasOptions: needsChoice(p),
+    rating: {
+      average: p.ratingCount === 0 ? 0 : Math.round((p.ratingSum / p.ratingCount) * 10) / 10,
+      count: p.ratingCount,
+    },
+    hasOptions: p.sizes.length > 0 || p.colors.length > 1,
   };
 }
