@@ -12,29 +12,18 @@ const cookieOptions: CookieOptions = {
   path: "/api/auth",
 };
 
-// Refresh token cookie me rakho (15 din).
-export function setRefreshCookie(res: Response, token: string): void {
-  res.cookie(REFRESH_COOKIE, token, {
-    ...cookieOptions,
-    maxAge: REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000,
-  });
+export function setRefreshCookie(res: Response, token: string) {
+  res.cookie(REFRESH_COOKIE, token, { ...cookieOptions, maxAge: REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000 });
 }
 
-// Logout par cookie hatao.
-export function clearRefreshCookie(res: Response): void {
+export function clearRefreshCookie(res: Response) {
   res.clearCookie(REFRESH_COOKIE, cookieOptions);
 }
 
-// Request ki cookies me se refresh token dhoondh kar do.
 export function readRefreshCookie(req: Request): string | undefined {
-  for (const part of req.headers.cookie?.split(";") ?? []) {
-    const [name, ...rest] = part.trim().split("=");
-    if (name !== REFRESH_COOKIE) continue;
-    try {
-      return decodeURIComponent(rest.join("="));
-    } catch {
-      return undefined;
-    }
-  }
-  return undefined;
+  const cookie = req.headers.cookie
+    ?.split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${REFRESH_COOKIE}=`));
+  return cookie?.slice(REFRESH_COOKIE.length + 1);
 }

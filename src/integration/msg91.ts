@@ -2,7 +2,6 @@ import { env } from "../config/env";
 import { logger } from "../config/winston";
 import { AppError } from "../utils/appError";
 
-// MSG91 se OTP ka SMS bhejo; laptop par SMS nahi jata, OTP log me dikhta hai.
 export async function sendOtpSms(mobile: string, otp: string): Promise<void> {
   if (env.NODE_ENV !== "production") {
     logger.info(`DEV OTP -> ${mobile}: ${otp}`);

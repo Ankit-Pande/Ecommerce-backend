@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { uuid } from "./common";
+import { idParams, uuid } from "./common";
 
 const quantity = z.coerce.number().int().min(1).max(10);
 const option = z.string().trim().max(30).optional();
@@ -9,10 +9,6 @@ export const addToCartSchema = z.object({
 });
 
 export const updateCartItemSchema = z.object({
-  params: z.object({ itemId: uuid }),
+  params: idParams,
   body: z.object({ quantity }).strict(),
-});
-
-export const cartItemParamSchema = z.object({
-  params: z.object({ itemId: uuid }),
 });

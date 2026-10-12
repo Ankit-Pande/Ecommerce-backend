@@ -13,19 +13,16 @@ const PROFILE_SELECT = {
 };
 
 export const userService = {
-  // Apni profile.
   async getMe(userId: string) {
     const user = await prisma.user.findUnique({ where: { id: userId }, select: PROFILE_SELECT });
     if (!user) throw new AppError("User not found", 404);
     return user;
   },
 
-  // Profile badlo (email kisi aur ka ho to 409).
   async updateMe(userId: string, data: { name?: string; email?: string; alternatePhone?: string | null }) {
     return prisma.user.update({ where: { id: userId }, data, select: PROFILE_SELECT });
   },
 
-  // Account delete: orders bache rahein, personal data mite, number dobara use ho sake.
   async deleteAccount(userId: string) {
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
     if (!user) throw new AppError("User not found", 404);

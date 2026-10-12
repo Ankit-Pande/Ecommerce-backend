@@ -2,7 +2,6 @@ datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
   directUrl  = env("DIRECT_URL")
-  // pg_trgm: galat spelling wali search; vector: AI ki meaning wali search.
   extensions = [pg_trgm, vector]
 }
 
@@ -25,7 +24,6 @@ enum OrderStatus {
   CANCELLED
 }
 
-// REFUNDED: admin ne Razorpay se paisa lauta diya.
 enum PaymentStatus {
   PENDING
   COMPLETED
@@ -37,7 +35,6 @@ enum PaymentMethod {
   ONLINE
 }
 
-// Order kisne cancel kiya: customer, admin ya system (payment time par nahi aaya).
 enum CancelledBy {
   USER
   ADMIN
@@ -64,13 +61,11 @@ model User {
   reviews   Review[]
 }
 
-// Ek row = ek device ka login.
 model Session {
   id          String    @id @default(uuid())
   userId      String
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   jti         String    @unique
-  // Pichhla token id: do tab ek saath refresh karein to 1 minute tak ye bhi chalega.
   previousJti String?
   rotatedAt   DateTime?
   expiresAt   DateTime
@@ -101,7 +96,6 @@ model Address {
   @@index([userId])
 }
 
-// Category aur subcategory ek hi table me (2 level).
 model Category {
   id       String     @id @default(uuid())
   name     String
@@ -143,20 +137,17 @@ model Product {
   slug        String @unique
   description String
 
-  // Paise me (Rs.499 = 49900). sellPaise = discount ke baad ka price, filter aur sort isi par.
   pricePaise      Int
   discountPercent Int       @default(0)
   sellPaise       Int
   offerEndsAt     DateTime?
 
   stock    Int      @default(0)
-  // Customer inme se chunta hai (jaise ["Black", "Blue"], ["S", "M", "L"]); khaali = koi option nahi.
   colors   String[] @default([])
   sizes    String[] @default([])
   gender   String?
   ageGroup String?
   images   String[]
-  // Product ki khaas baatein, jaise { "RAM": "16GB", "Battery": "5000mAh" } (search aur AI dono me kaam aati hain).
   specs    Json?
 
   categoryId String
@@ -168,16 +159,12 @@ model Product {
   isTrending Boolean @default(false)
   isFeatured Boolean @default(false)
 
-  // Rating ka hisaab yahin rakhte hain, taaki har baar saare reviews na ginne padein.
   ratingSum     Int   @default(0)
   ratingCount   Int   @default(0)
   ratingAverage Float @default(0)
 
-  // AI search ka data (Gemini embedding). Naye "migrate dev" me "DROP INDEX Product_embedding_idx" aaye to wo line hata dena.
-  embedding Unsupported("halfvec(768)")?
-
-  // AI search ke liye naam aur specs ke shabd (DB khud banata hai, full-text index ke saath).
-  searchText Unsupported("tsvector")? @default(dbgenerated("to_tsvector('english'::regconfig, ((COALESCE(name, ''::text) || ' '::text) || COALESCE((specs)::text, ''::text)))"))
+  embedding  Unsupported("halfvec(768)")?
+  searchText Unsupported("tsvector")?     @default(dbgenerated("to_tsvector('english'::regconfig, ((COALESCE(name, ''::text) || ' '::text) || COALESCE((specs)::text, ''::text)))"))
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -219,7 +206,6 @@ model CartItem {
   productId String
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   quantity  Int
-  // Chuna hua size aur rang ('' = product me ye option nahi).
   size      String  @default("")
   color     String  @default("")
 
@@ -229,7 +215,6 @@ model CartItem {
   @@unique([cartId, productId, size, color])
 }
 
-// Stock order banne par katta hai aur sirf cancel hone par wapas aata hai.
 model Order {
   id             String @id @default(uuid())
   userId         String
@@ -239,7 +224,6 @@ model Order {
   addressId String?
   address   Address? @relation(fields: [addressId], references: [id], onDelete: SetNull)
 
-  // Delivery ka pata order me copy hota hai, taaki address badle to order ka pata na badle.
   shipName    String
   shipPhone   String
   shipLine1   String
@@ -253,11 +237,9 @@ model Order {
   paymentStatus PaymentStatus @default(PENDING)
   paymentMethod PaymentMethod
 
-  // Online order: is time tak payment na aaye to order cancel aur stock wapas.
   paymentExpiresAt  DateTime?
   razorpayOrderId   String?      @unique
   razorpayPaymentId String?
-  // Payment aayi par order confirm nahi ho saka (late ya galat amount), admin dekhe.
   needsReview       Boolean      @default(false)
   cancelledBy       CancelledBy?
 
@@ -281,7 +263,6 @@ model OrderItem {
   productId String
   product   Product @relation(fields: [productId], references: [id])
 
-  // Order ke time ka naam, photo aur price.
   productName  String
   productImage String?
   pricePaise   Int
@@ -293,7 +274,6 @@ model OrderItem {
   @@index([productId])
 }
 
-// Razorpay ke message ki id, taaki ek payment do baar na gine.
 model WebhookEvent {
   id        String   @id
   createdAt DateTime @default(now())

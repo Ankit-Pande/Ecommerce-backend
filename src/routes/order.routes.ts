@@ -10,7 +10,8 @@ import {
 import { authCheck } from "../middleware/authCheck";
 import { rateLimiter } from "../middleware/rateLimiter";
 import { validate } from "../middleware/validate";
-import { checkoutSchema, listOrderSchema, orderIdSchema, verifyPaymentSchema } from "../validation/order.validation";
+import { idParamSchema } from "../validation/common";
+import { checkoutSchema, listOrderSchema, verifyPaymentSchema } from "../validation/order.validation";
 
 const router = Router();
 
@@ -23,14 +24,14 @@ router.post(
   checkout,
 );
 router.get("/", validate(listOrderSchema), listOrders);
-router.get("/:id", validate(orderIdSchema), getOrder);
-router.post("/:id/payment", validate(orderIdSchema), retryPayment);
+router.get("/:id", validate(idParamSchema), getOrder);
+router.post("/:id/payment", validate(idParamSchema), retryPayment);
 router.post(
   "/:id/verify-payment",
   rateLimiter({ name: "verify-payment", seconds: 60, maxRequests: 10 }),
   validate(verifyPaymentSchema),
   verifyPayment,
 );
-router.patch("/:id/cancel", validate(orderIdSchema), cancelOrder);
+router.patch("/:id/cancel", validate(idParamSchema), cancelOrder);
 
 export const orderRoutes = router;

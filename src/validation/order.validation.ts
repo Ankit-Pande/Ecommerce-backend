@@ -20,8 +20,6 @@ export const checkoutSchema = z.object({
     .strict(),
 });
 
-export const orderIdSchema = z.object({ params: idParams });
-
 export const verifyPaymentSchema = z.object({
   params: idParams,
   body: z
@@ -33,8 +31,5 @@ export const verifyPaymentSchema = z.object({
 });
 
 export const listOrderSchema = z.object({
-  query: z.object({
-    status: commaList(orderStatus, 5).optional(),
-    ...pageParams(),
-  }),
+  query: z.object({ status: commaList(orderStatus, 5).optional(), ...pageParams() }),
 });

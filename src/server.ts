@@ -1,7 +1,7 @@
 import { app } from "./app";
 import { env } from "./config/env";
-import { connectDB, disconnectDB } from "./config/db";
-import { disconnectRedis } from "./config/redis";
+import { prisma } from "./config/db";
+import { redis } from "./config/redis";
 import { logger } from "./config/winston";
 import { embeddingService } from "./service/embedding.service";
 import { orderService } from "./service/order.service";
@@ -9,61 +9,49 @@ import { productService } from "./service/product.service";
 import { tokenService } from "./service/token.service";
 
 const ONE_MINUTE = 60 * 1000;
-const ONE_HOUR = 60 * ONE_MINUTE;
-const ONE_DAY = 24 * ONE_HOUR;
+const ONE_DAY = 24 * 60 * ONE_MINUTE;
 
-// Server chalu karo: DB se jodo, har minute, har ghante aur roz wale kaam chalao, band hote waqt sab aaram se band karo.
-const start = async () => {
-  await connectDB();
+function runEvery(ms: number, name: string, job: () => Promise<unknown>) {
+  let running = false;
+  const run = async () => {
+    if (running) return;
+    running = true;
+    await job().catch((error) => logger.error(`${name} failed`, { error }));
+    running = false;
+  };
+  run();
+  return setInterval(run, ms);
+}
+
+async function start() {
+  await prisma.$connect();
+  logger.info("Database connected");
 
   const server = app.listen(env.PORT, () => {
     logger.info(`Server running on port ${env.PORT} [${env.NODE_ENV}]`);
   });
 
-  let isJobRunning = false;
-  const everyMinuteJob = setInterval(async () => {
-    if (isJobRunning) return;
-    isJobRunning = true;
-    try {
-      await orderService.releaseExpiredOrders().catch((error) => logger.error("Order expiry job failed", { error }));
-      await productService.expireOffers().catch((error) => logger.error("Offer expiry job failed", { error }));
-    } finally {
-      isJobRunning = false;
-    }
-  }, ONE_MINUTE);
+  const jobs = [
+    runEvery(ONE_MINUTE, "Order expiry job", () => orderService.releaseExpiredOrders()),
+    runEvery(ONE_MINUTE, "Offer expiry job", () => productService.expireOffers()),
+    runEvery(ONE_MINUTE, "Embedding job", () => embeddingService.fillMissing()),
+    runEvery(ONE_DAY, "Session cleanup job", () => tokenService.deleteExpiredSessions()),
+  ];
 
-  // Purani login sessions saaf karo (start par ek baar, phir roz).
-  const cleanOldSessions = async () => {
-    await tokenService.deleteExpiredSessions().catch((error) => logger.error("Session cleanup failed", { error }));
-  };
-  cleanOldSessions();
-  const dailyJob = setInterval(cleanOldSessions, ONE_DAY);
-
-  // Naye ya chhoote products ka AI embedding bana do (har ghante 100 tak).
-  const fillEmbeddings = async () => {
-    await embeddingService
-      .fillMissing()
-      .catch((error) => logger.warn("Embedding fill failed", { error: error.message }));
-  };
-  const hourlyJob = setInterval(fillEmbeddings, ONE_HOUR);
-
-  // Band karte waqt: naye request roko, phir DB aur Redis band (10 second me na ho to zabardasti band).
   const shutdown = (signal: string) => {
-    logger.info(`${signal} received, shutting down...`);
-    clearInterval(everyMinuteJob);
-    clearInterval(dailyJob);
-    clearInterval(hourlyJob);
+    logger.info(`${signal} received, shutting down`);
+    jobs.forEach(clearInterval);
     server.close(async () => {
-      await disconnectDB();
-      await disconnectRedis();
+      await prisma.$disconnect();
+      redis.disconnect();
       process.exit(0);
     });
-    setTimeout(() => process.exit(1), 10000).unref();
+    setTimeout(() => process.exit(1), 10_000).unref();
   };
 
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
-};
+}
 
 start().catch((error) => {
   logger.error("Server startup failed", { error });

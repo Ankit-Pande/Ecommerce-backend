@@ -1,14 +1,13 @@
 import { prisma } from "../config/db";
-import { CACHE_SECONDS, getOrSetCache } from "../config/cache";
+import { getOrSetCache } from "../config/redis";
 import { ACTIVE_CATEGORY, CARD_SELECT, productCard } from "../utils/price";
 
 const SECTION_SIZE = 10;
 
 export const homeService = {
-  // Home page ka saara data ek baar me: banner, saari category aur 4 product section (5 minute cache).
   async getHome() {
-    return getOrSetCache("home", CACHE_SECONDS, async () => {
-      const visibleProduct = { isActive: true, category: ACTIVE_CATEGORY };
+    return getOrSetCache("home", async () => {
+      const visible = { isActive: true, category: ACTIVE_CATEGORY };
       const [banners, categories, trending, featured, latest, offers] = await Promise.all([
         prisma.banner.findMany({
           where: { isActive: true },
@@ -31,26 +30,26 @@ export const homeService = {
           orderBy: { name: "asc" },
         }),
         prisma.product.findMany({
-          where: { ...visibleProduct, isTrending: true },
+          where: { ...visible, isTrending: true },
           select: CARD_SELECT,
           orderBy: { updatedAt: "desc" },
           take: SECTION_SIZE,
         }),
         prisma.product.findMany({
-          where: { ...visibleProduct, isFeatured: true },
+          where: { ...visible, isFeatured: true },
           select: CARD_SELECT,
           orderBy: { updatedAt: "desc" },
           take: SECTION_SIZE,
         }),
         prisma.product.findMany({
-          where: visibleProduct,
+          where: visible,
           select: CARD_SELECT,
           orderBy: { createdAt: "desc" },
           take: SECTION_SIZE,
         }),
         prisma.product.findMany({
           where: {
-            ...visibleProduct,
+            ...visible,
             discountPercent: { gt: 0 },
             OR: [{ offerEndsAt: null }, { offerEndsAt: { gt: new Date() } }],
           },

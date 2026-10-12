@@ -1,6 +1,5 @@
 import { z } from "zod";
 
-// HTML tag, control character, "....." jaisa repeat aur faltu space hatao.
 const cleanText = (text: string) =>
   text
     .replace(/<[^>]*>/g, " ")

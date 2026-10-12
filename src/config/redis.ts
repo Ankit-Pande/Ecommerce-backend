@@ -2,6 +2,9 @@ import Redis from "ioredis";
 import { env } from "./env";
 import { logger } from "./winston";
 
+const CACHE_SECONDS = 300;
+const CACHE_VERSION_KEY = "cache:version";
+
 export const redis = new Redis(env.REDIS_URL, {
   maxRetriesPerRequest: 2,
   retryStrategy: (times) => Math.min(times * 200, 2000),
@@ -13,18 +16,28 @@ export const redis = new Redis(env.REDIS_URL, {
 redis.on("connect", () => logger.info("Redis connected"));
 redis.on("error", (error) => logger.error("Redis error", { error }));
 
-// Server band hote waqt Redis connection band karo.
-export async function disconnectRedis(): Promise<void> {
-  if (redis.status === "end") return;
-  await redis.quit().catch((error) => logger.error("Redis disconnect failed", { error }));
-}
-
 const COUNT_SCRIPT = `
 local count = redis.call('INCR', KEYS[1])
 if redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
 return count`;
 
-// Is key ki ginti +1 karke nayi ginti do; "seconds" poore hone par ginti fir 0 se.
 export async function countInWindow(key: string, seconds: number): Promise<number> {
   return Number(await redis.eval(COUNT_SCRIPT, 1, key, seconds));
+}
+
+export async function getOrSetCache<T>(name: string, loadFromDb: () => Promise<T>): Promise<T> {
+  const version = await redis.get(CACHE_VERSION_KEY).catch(() => undefined);
+  if (version === undefined) return loadFromDb();
+
+  const key = `cache:${version ?? 0}:${name}`;
+  const saved = await redis.get(key).catch(() => null);
+  if (saved) return JSON.parse(saved) as T;
+
+  const data = await loadFromDb();
+  await redis.set(key, JSON.stringify(data), "EX", CACHE_SECONDS).catch(() => null);
+  return data;
+}
+
+export async function clearCache() {
+  await redis.incr(CACHE_VERSION_KEY).catch(() => null);
 }

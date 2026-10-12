@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { prisma, lockUser } from "../config/db";
+import { lockUser, prisma } from "../config/db";
 import { AppError } from "../utils/appError";
 import { ACTIVE_CATEGORY, CARD_SELECT, productCard } from "../utils/price";
 
@@ -8,7 +8,6 @@ const MAX_ITEMS = 50;
 
 export type Options = { size?: string; color?: string };
 
-// Customer ka chuna size/rang product ke options me hona chahiye; ek hi rang ho to wahi; option na ho to "".
 export function chooseOptions(product: { sizes: string[]; colors: string[] }, picked: Options) {
   const size = picked.size?.trim() ?? "";
   const color = picked.color?.trim() ?? (product.colors.length === 1 ? product.colors[0] : "");
@@ -21,7 +20,6 @@ export function chooseOptions(product: { sizes: string[]; colors: string[] }, pi
   return { size, color };
 }
 
-// Cart live price se banao; band ya out-of-stock item dikhe par total me na jude.
 async function getCart(userId: string) {
   const cart = await prisma.cart.findUnique({
     where: { userId },
@@ -51,25 +49,30 @@ async function getCart(userId: string) {
     const maxQuantity = Math.min(MAX_QUANTITY, product.stock);
     const card = productCard(product);
     if (isAvailable && quantity <= maxQuantity) totalPaise += card.finalPricePaise * quantity;
-
     return { id, quantity, size, color, product: { ...card, images: product.images, maxQuantity, isAvailable } };
   });
 
   return { items, totalPaise };
 }
 
-// Product chalu hai aur cart me iske saare size/rang mila kar itna stock hai? Nahi to error.
-async function checkStock(db: Prisma.TransactionClient, cartId: string, productId: string, quantity: number, skipItemId?: string) {
+async function checkStock(
+  db: Prisma.TransactionClient,
+  cartId: string,
+  productId: string,
+  quantity: number,
+  skipItemId?: string,
+) {
   const product = await db.product.findFirst({
     where: { id: productId, isActive: true, category: ACTIVE_CATEGORY },
     select: { stock: true },
   });
   if (!product) throw new AppError("Product unavailable", 404);
-  const others = await db.cartItem.aggregate({
+
+  const otherLines = await db.cartItem.aggregate({
     where: { cartId, productId, ...(skipItemId && { id: { not: skipItemId } }) },
     _sum: { quantity: true },
   });
-  if (quantity > MAX_QUANTITY || quantity + (others._sum.quantity ?? 0) > product.stock) {
+  if (quantity > MAX_QUANTITY || quantity + (otherLines._sum.quantity ?? 0) > product.stock) {
     throw new AppError("Quantity exceeds stock or maximum 10 units", 409);
   }
 }
@@ -77,7 +80,6 @@ async function checkStock(db: Prisma.TransactionClient, cartId: string, productI
 export const cartService = {
   getCart,
 
-  // Cart me daalo (chune size/rang ke saath); wahi line pehle se hai to quantity jud jaati hai.
   async addItem(userId: string, productId: string, quantity: number, picked: Options = {}) {
     await prisma.$transaction(async (db) => {
       await lockUser(db, userId);
@@ -87,13 +89,13 @@ export const cartService = {
 
       const cart = await db.cart.upsert({ where: { userId }, create: { userId }, update: {} });
       const line = { cartId_productId_size_color: { cartId: cart.id, productId, ...options } };
-      const alreadyInCart = await db.cartItem.findUnique({ where: line });
-      if (!alreadyInCart && (await db.cartItem.count({ where: { cartId: cart.id } })) >= MAX_ITEMS) {
+      const inCart = await db.cartItem.findUnique({ where: line });
+      if (!inCart && (await db.cartItem.count({ where: { cartId: cart.id } })) >= MAX_ITEMS) {
         throw new AppError(`Cart can hold ${MAX_ITEMS} different items. Remove one first.`, 400);
       }
-      const newQuantity = (alreadyInCart?.quantity ?? 0) + quantity;
-      await checkStock(db, cart.id, productId, newQuantity, alreadyInCart?.id);
 
+      const newQuantity = (inCart?.quantity ?? 0) + quantity;
+      await checkStock(db, cart.id, productId, newQuantity, inCart?.id);
       await db.cartItem.upsert({
         where: line,
         create: { cartId: cart.id, productId, quantity, ...options },
@@ -103,7 +105,6 @@ export const cartService = {
     return getCart(userId);
   },
 
-  // Ek line ki quantity badlo (+/- button).
   async updateItem(userId: string, itemId: string, quantity: number) {
     await prisma.$transaction(async (db) => {
       await lockUser(db, userId);
@@ -115,20 +116,18 @@ export const cartService = {
     return getCart(userId);
   },
 
-  // Poora cart khali karo.
-  async clear(userId: string) {
-    await prisma.$transaction(async (db) => {
-      await lockUser(db, userId);
-      await db.cartItem.deleteMany({ where: { cart: { userId } } });
-    });
-  },
-
-  // Ek line cart se hatao.
   async removeItem(userId: string, itemId: string) {
     await prisma.$transaction(async (db) => {
       await lockUser(db, userId);
       await db.cartItem.deleteMany({ where: { id: itemId, cart: { userId } } });
     });
     return getCart(userId);
+  },
+
+  async clear(userId: string) {
+    await prisma.$transaction(async (db) => {
+      await lockUser(db, userId);
+      await db.cartItem.deleteMany({ where: { cart: { userId } } });
+    });
   },
 };

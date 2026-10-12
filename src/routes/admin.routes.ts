@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  applySale,
   blockUser,
   bulkCreateProducts,
   createBanner,
@@ -12,11 +13,11 @@ import {
   deleteProduct,
   deleteReview,
   getAdminProduct,
+  getAdminStats,
   listAdminBanners,
   listAdminBrands,
   listAdminCategories,
   listAdminOrders,
-  getAdminStats,
   listAdminProducts,
   listAdminUsers,
   markOrderRefunded,
@@ -27,13 +28,12 @@ import {
   updateOrderStatus,
   updateProduct,
   uploadImages,
-  applySale,
 } from "../controller/admin.controller";
+import { upload } from "../integration/storage";
 import { authCheck } from "../middleware/authCheck";
 import { rateLimiter } from "../middleware/rateLimiter";
 import { roleCheck } from "../middleware/roleCheck";
 import { validate } from "../middleware/validate";
-import { upload } from "../integration/storage";
 import {
   adminListOrderSchema,
   adminListProductSchema,
@@ -44,7 +44,6 @@ import {
   createBrandSchema,
   createCategorySchema,
   createProductSchema,
-  idParamSchema,
   saleSchema,
   setUserRoleSchema,
   updateBannerSchema,
@@ -53,6 +52,7 @@ import {
   updateOrderStatusSchema,
   updateProductSchema,
 } from "../validation/admin.validation";
+import { idParamSchema } from "../validation/common";
 
 const router = Router();
 
