@@ -2,12 +2,10 @@ import { z } from "zod";
 import { AGE_GROUPS, commaList, GENDERS, pageParams, queryBoolean, slug } from "./common";
 import { titleCase } from "../utils/text";
 
-const searchText = z.string().trim().min(2).max(80);
-
 export const catalogSchema = z.object({
   query: z
     .object({
-      q: searchText.optional(),
+      q: z.string().trim().min(2).max(80).optional(),
       category: slug.optional(),
       subcategory: slug.optional(),
       section: z.enum(["trending", "featured"]).optional(),
@@ -19,11 +17,15 @@ export const catalogSchema = z.object({
       minPricePaise: z.coerce.number().int().min(0).max(1000000000).optional(),
       maxPricePaise: z.coerce.number().int().min(0).max(1000000000).optional(),
       discount: queryBoolean.optional(),
-      sort: z.enum(["latest", "price_asc", "price_desc", "discount", "rating"]).default("latest"),
+      minRating: z.coerce.number().min(0).max(5).optional(),
+      sort: z.enum(["latest", "price_asc", "price_desc", "discount", "rating"]).optional(),
       ...pageParams(),
     })
     .refine(
-      (q) => q.minPricePaise === undefined || q.maxPricePaise === undefined || q.minPricePaise <= q.maxPricePaise,
+      (query) =>
+        query.minPricePaise === undefined ||
+        query.maxPricePaise === undefined ||
+        query.minPricePaise <= query.maxPricePaise,
       { message: "minPricePaise cannot be greater than maxPricePaise" },
     ),
 });

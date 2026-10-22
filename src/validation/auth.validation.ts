@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const loginPhone = z
   .string()
-  .transform((v) => v.replace(/[\s-]/g, ""))
+  .transform((value) => value.replace(/[\s-]/g, ""))
   .pipe(z.string().regex(/^(\+?91)?[6-9]\d{9}$/, "Invalid mobile number (example: 9876543210)"));
 
 export const sendOtpSchema = z.object({

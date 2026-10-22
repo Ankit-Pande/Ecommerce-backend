@@ -5,6 +5,7 @@ import { logger } from "../config/winston";
 import { AppError } from "../utils/appError";
 
 const IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+const PNG_START = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
 cloudinary.config({
   cloud_name: env.CLOUDINARY_CLOUD_NAME,
@@ -15,21 +16,21 @@ cloudinary.config({
 export const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 2 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    if (!IMAGE_TYPES.includes(file.mimetype)) return cb(new AppError("Only jpg, png and webp images are allowed", 400));
-    cb(null, true);
+  // Accepts only jpg, png and webp uploads.
+  fileFilter: (_req, file, callback) => {
+    if (!IMAGE_TYPES.includes(file.mimetype)) {
+      return callback(new AppError("Only jpg, png and webp images are allowed", 400));
+    }
+    callback(null, true);
   },
 });
 
-function isRealImage(buffer: Buffer): boolean {
-  const jpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
-  const png = buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
-  const webp = buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP";
-  return jpeg || png || webp;
-}
-
+// Checks the file bytes really are a jpg, png or webp image, uploads it to Cloudinary and returns its URL.
 export function uploadImage(buffer: Buffer): Promise<string> {
-  if (!isRealImage(buffer)) return Promise.reject(new AppError("Invalid image content", 400));
+  const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  const isPng = buffer.subarray(0, 8).equals(PNG_START);
+  const isWebp = buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP";
+  if (!isJpeg && !isPng && !isWebp) return Promise.reject(new AppError("Invalid image content", 400));
 
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
@@ -46,6 +47,7 @@ export function uploadImage(buffer: Buffer): Promise<string> {
   });
 }
 
+// Uploads all files of a request and returns their URLs in the same order.
 export function uploadFiles(files: Express.Multer.File[] | undefined): Promise<string[]> {
   return Promise.all((files ?? []).map((file) => uploadImage(file.buffer)));
 }

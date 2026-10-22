@@ -5,7 +5,6 @@ import { tokenService } from "./token.service";
 const PROFILE_SELECT = {
   id: true,
   phone: true,
-  alternatePhone: true,
   name: true,
   email: true,
   role: true,
@@ -13,16 +12,19 @@ const PROFILE_SELECT = {
 };
 
 export const userService = {
+  // The user's profile.
   async getMe(userId: string) {
     const user = await prisma.user.findUnique({ where: { id: userId }, select: PROFILE_SELECT });
     if (!user) throw new AppError("User not found", 404);
     return user;
   },
 
-  async updateMe(userId: string, data: { name?: string; email?: string; alternatePhone?: string | null }) {
+  // Changes the user's name or email.
+  async updateMe(userId: string, data: { name?: string; email?: string }) {
     return prisma.user.update({ where: { id: userId }, data, select: PROFILE_SELECT });
   },
 
+  // Removes personal data, addresses and cart, keeps orders for the store's records, and logs out every device.
   async deleteAccount(userId: string) {
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
     if (!user) throw new AppError("User not found", 404);
@@ -36,7 +38,6 @@ export const userService = {
           isBlocked: true,
           name: null,
           email: null,
-          alternatePhone: null,
           phone: `deleted_${userId}`,
         },
       }),

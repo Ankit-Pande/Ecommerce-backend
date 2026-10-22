@@ -11,6 +11,10 @@ const schema = z
     LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
     TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(1),
     API_RATE_MAX: z.coerce.number().int().positive().default(300),
+    INTERNAL_API_KEY: z
+      .string()
+      .refine((key) => key === "" || key.length >= 32, "INTERNAL_API_KEY must be empty or at least 32 characters")
+      .optional(),
 
     DATABASE_URL: z.string().url(),
     DIRECT_URL: z.string().url(),
@@ -45,11 +49,11 @@ const schema = z
     AI_DAILY_LIMIT: z.coerce.number().int().positive().default(1000),
   })
   .refine(
-    (v) => new Set([v.JWT_ACCESS_SECRET, v.JWT_REFRESH_SECRET, v.OTP_SECRET]).size === 3,
+    (values) => new Set([values.JWT_ACCESS_SECRET, values.JWT_REFRESH_SECRET, values.OTP_SECRET]).size === 3,
     "JWT_ACCESS_SECRET, JWT_REFRESH_SECRET and OTP_SECRET must be different",
   )
   .refine(
-    (v) => v.NODE_ENV !== "production" || !/localhost|127\.0\.0\.1/.test(v.FRONTEND_ORIGINS),
+    (values) => values.NODE_ENV !== "production" || !/localhost|127\.0\.0\.1/.test(values.FRONTEND_ORIGINS),
     "FRONTEND_ORIGINS cannot point at localhost in production",
   );
 

@@ -3,14 +3,22 @@ import { Role } from "@prisma/client";
 import { prisma } from "../config/db";
 import { redis } from "../config/redis";
 import { AppError } from "../utils/appError";
-import { REFRESH_TTL_DAYS, signAccessToken, signRefreshToken, verifyRefreshToken } from "../utils/token";
+import { REFRESH_TOKEN_DAYS, signAccessToken, signRefreshToken, verifyRefreshToken } from "../utils/token";
 
 const OLD_TOKEN_GRACE_MS = 60 * 1000;
 const SESSION_CACHE_SECONDS = 60;
 
-const sessionKey = (sessionId: string) => `session:${sessionId}`;
-const newExpiry = () => new Date(Date.now() + REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000);
+// Redis key that caches a session's user and role.
+function sessionKey(sessionId: string) {
+  return `session:${sessionId}`;
+}
 
+// The end date of a session: 15 days from now.
+function newExpiry() {
+  return new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000);
+}
+
+// A new access token and refresh token for the session.
 function makeTokens(userId: string, sessionId: string, jti: string) {
   return {
     accessToken: signAccessToken({ userId, sessionId }),
@@ -19,11 +27,13 @@ function makeTokens(userId: string, sessionId: string, jti: string) {
 }
 
 export const tokenService = {
+  // Starts a new login session and returns its tokens.
   async createSession(userId: string) {
     const session = await prisma.session.create({ data: { userId, jti: randomUUID(), expiresAt: newExpiry() } });
     return makeTokens(userId, session.id, session.jti);
   },
 
+  // The user's role if the session is still valid and the user is not blocked or deleted (cached 60 seconds).
   async getSessionRole(userId: string, sessionId: string): Promise<Role | null> {
     const cached = await redis.get(sessionKey(sessionId)).catch(() => null);
     if (cached) {
@@ -45,6 +55,7 @@ export const tokenService = {
     return role;
   },
 
+  // Rotates the tokens; the previous token works 60 more seconds (two tabs), any other old token ends the session.
   async refreshSession(refreshToken: string) {
     const { userId, sessionId, jti } = verifyRefreshToken(refreshToken);
 
@@ -83,6 +94,7 @@ export const tokenService = {
     return tokens;
   },
 
+  // Ends the session of this refresh token (a bad token is ignored).
   async logout(refreshToken: string) {
     let token;
     try {
@@ -94,6 +106,7 @@ export const tokenService = {
     await redis.del(sessionKey(token.sessionId)).catch(() => null);
   },
 
+  // Ends every session of the user (block, role change, account delete).
   async logoutAllDevices(userId: string) {
     const sessions = await prisma.session.findMany({ where: { userId }, select: { id: true } });
     if (sessions.length === 0) return;
@@ -101,6 +114,7 @@ export const tokenService = {
     await redis.del(...sessions.map((session) => sessionKey(session.id))).catch(() => null);
   },
 
+  // Deletes expired sessions (runs once a day).
   async deleteExpiredSessions() {
     await prisma.session.deleteMany({ where: { expiresAt: { lt: new Date() } } });
   },

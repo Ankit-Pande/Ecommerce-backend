@@ -5,17 +5,20 @@ import { verifyWebhookSignature } from "../integration/razorpay";
 import { orderService } from "../service/order.service";
 import { asyncHandler } from "../utils/asyncHandler";
 
+// POST /order/checkout — places an order from the cart (or one "buy now" product).
 export const checkout = asyncHandler(async (req: Request, res: Response) => {
   const { addressId, paymentMethod, idempotencyKey, buyNow } = req.body;
   const result = await orderService.checkout(req.user!.userId, addressId, paymentMethod, idempotencyKey, buyNow);
   res.status(201).json({ success: true, data: result });
 });
 
+// POST /order/:id/payment — gives the Razorpay details again to pay an unpaid order.
 export const retryPayment = asyncHandler(async (req: Request, res: Response) => {
   const result = await orderService.retryPayment(req.user!.userId, req.params.id);
   res.json({ success: true, data: result });
 });
 
+// POST /order/:id/verify-payment — confirms the order after Razorpay checkout succeeds.
 export const verifyPayment = asyncHandler(async (req: Request, res: Response) => {
   const { razorpayPaymentId, razorpaySignature } = req.body;
   const result = await orderService.verifyPayment(
@@ -27,22 +30,26 @@ export const verifyPayment = asyncHandler(async (req: Request, res: Response) =>
   res.json({ success: true, data: result });
 });
 
+// GET /order — the user's orders, newest first.
 export const listOrders = asyncHandler(async (req: Request, res: Response) => {
   const { status, cursor, limit } = req.query as unknown as { status?: OrderStatus[]; cursor?: string; limit: number };
   const result = await orderService.listForUser(req.user!.userId, status, cursor, limit);
   res.json({ success: true, ...result });
 });
 
+// GET /order/:id — one of the user's orders with items and address.
 export const getOrder = asyncHandler(async (req: Request, res: Response) => {
   const order = await orderService.getForUser(req.user!.userId, req.params.id);
   res.json({ success: true, data: order });
 });
 
+// PATCH /order/:id/cancel — cancels an unpaid order that is not shipped yet.
 export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
   await orderService.cancel(req.params.id, req.user!.userId);
   res.json({ success: true, message: "Order cancelled" });
 });
 
+// POST /order/webhook — Razorpay's payment.captured event; the signature is checked on the raw body.
 export async function razorpayWebhook(req: Request, res: Response) {
   try {
     const signature = req.headers["x-razorpay-signature"];

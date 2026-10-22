@@ -8,6 +8,7 @@ const MAX_ITEMS = 50;
 
 export type Options = { size?: string; color?: string };
 
+// Checks the picked size and colour exist for the product (a single colour is picked by itself).
 export function chooseOptions(product: { sizes: string[]; colors: string[] }, picked: Options) {
   const size = picked.size?.trim() ?? "";
   const color = picked.color?.trim() ?? (product.colors.length === 1 ? product.colors[0] : "");
@@ -20,6 +21,7 @@ export function chooseOptions(product: { sizes: string[]; colors: string[] }, pi
   return { size, color };
 }
 
+// The cart with live prices; hidden or over-stock lines stay in the list but are left out of the total.
 async function getCart(userId: string) {
   const cart = await prisma.cart.findUnique({
     where: { userId },
@@ -49,12 +51,13 @@ async function getCart(userId: string) {
     const maxQuantity = Math.min(MAX_QUANTITY, product.stock);
     const card = productCard(product);
     if (isAvailable && quantity <= maxQuantity) totalPaise += card.finalPricePaise * quantity;
-    return { id, quantity, size, color, product: { ...card, images: product.images, maxQuantity, isAvailable } };
+    return { id, quantity, size, color, product: { ...card, maxQuantity, isAvailable } };
   });
 
   return { items, totalPaise };
 }
 
+// Throws when the product is hidden, or the quantity (with other lines of the same product) is over stock or 10.
 async function checkStock(
   db: Prisma.TransactionClient,
   cartId: string,
@@ -80,6 +83,7 @@ async function checkStock(
 export const cartService = {
   getCart,
 
+  // Adds a product to the cart, or raises the quantity when the same size and colour is already there.
   async addItem(userId: string, productId: string, quantity: number, picked: Options = {}) {
     await prisma.$transaction(async (db) => {
       await lockUser(db, userId);
@@ -105,6 +109,7 @@ export const cartService = {
     return getCart(userId);
   },
 
+  // Sets the quantity of one cart line.
   async updateItem(userId: string, itemId: string, quantity: number) {
     await prisma.$transaction(async (db) => {
       await lockUser(db, userId);
@@ -116,6 +121,7 @@ export const cartService = {
     return getCart(userId);
   },
 
+  // Removes one cart line.
   async removeItem(userId: string, itemId: string) {
     await prisma.$transaction(async (db) => {
       await lockUser(db, userId);
@@ -124,6 +130,7 @@ export const cartService = {
     return getCart(userId);
   },
 
+  // Removes every cart line.
   async clear(userId: string) {
     await prisma.$transaction(async (db) => {
       await lockUser(db, userId);

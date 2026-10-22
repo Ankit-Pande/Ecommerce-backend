@@ -5,6 +5,7 @@ import { AppError } from "../utils/appError";
 import { pageQuery, paginate } from "../utils/paginate";
 import { ACTIVE_CATEGORY } from "../utils/price";
 
+// Changes the product's rating sum and count, then saves the new average.
 async function changeRating(
   db: Prisma.TransactionClient,
   productId: string,
@@ -23,6 +24,7 @@ async function changeRating(
 }
 
 export const reviewService = {
+  // Reviews of a product, newest first.
   async list(slug: string, cursor: string | undefined, limit: number) {
     const reviews = await prisma.review.findMany({
       where: { product: { slug, isActive: true } },
@@ -33,6 +35,7 @@ export const reviewService = {
     return paginate(reviews, limit);
   },
 
+  // Adds or changes the user's review; only buyers whose order was delivered can review.
   async save(userId: string, slug: string, rating: number, comment?: string) {
     const product = await prisma.product.findFirst({
       where: { slug, isActive: true, category: ACTIVE_CATEGORY },
@@ -63,6 +66,7 @@ export const reviewService = {
     return review;
   },
 
+  // Deletes a review and takes its stars out of the product rating.
   async removeByAdmin(reviewId: string) {
     await prisma.$transaction(async (db) => {
       const found = await db.review.findUnique({ where: { id: reviewId }, select: { productId: true } });
