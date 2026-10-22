@@ -15,10 +15,12 @@ type AddressInput = {
 };
 
 export const addressService = {
+  // The user's addresses, default first.
   async list(userId: string) {
     return prisma.address.findMany({ where: { userId }, orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }] });
   },
 
+  // Adds an address; the first one (or one marked default) becomes the default.
   async create(userId: string, data: AddressInput) {
     return prisma.$transaction(async (db) => {
       await lockUser(db, userId);
@@ -31,13 +33,15 @@ export const addressService = {
     });
   },
 
+  // Changes an address; there is always exactly one default.
   async update(userId: string, id: string, data: Partial<AddressInput>) {
     return prisma.$transaction(async (db) => {
       await lockUser(db, userId);
       const address = await db.address.findFirst({ where: { id, userId } });
       if (!address) throw new AppError("Address not found", 404);
-      if (address.isDefault && data.isDefault === false)
+      if (address.isDefault && data.isDefault === false) {
         throw new AppError("Set another address as default first", 400);
+      }
 
       if (data.isDefault) {
         await db.address.updateMany({
@@ -49,6 +53,7 @@ export const addressService = {
     });
   },
 
+  // Deletes an address; if it was the default, the newest other address becomes the default.
   async remove(userId: string, id: string) {
     await prisma.$transaction(async (db) => {
       await lockUser(db, userId);

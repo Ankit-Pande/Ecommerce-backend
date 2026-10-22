@@ -5,10 +5,12 @@ import { rateLimiter } from "../middleware/rateLimiter";
 
 const router = Router();
 
+// Liveness check: the process is up.
 router.get("/", (_req, res) => {
   res.json({ status: "ok" });
 });
 
+// Readiness check: the database and Redis both answer.
 router.get(
   "/ready",
   rateLimiter({ name: "health", seconds: 60, maxRequests: 60, allowIfRedisDown: true }),

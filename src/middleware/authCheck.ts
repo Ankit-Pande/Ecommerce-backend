@@ -12,6 +12,7 @@ declare global {
   }
 }
 
+// Needs a valid access token for a live session; puts the user on req.user.
 export const authCheck: RequestHandler = async (req, _res, next) => {
   try {
     const header = req.headers.authorization;
@@ -28,6 +29,7 @@ export const authCheck: RequestHandler = async (req, _res, next) => {
   }
 };
 
+// Same as authCheck when a token is sent; guests without a token pass through.
 export const optionalAuth: RequestHandler = (req, res, next) => {
   if (!req.headers.authorization) return next();
   return authCheck(req, res, next);

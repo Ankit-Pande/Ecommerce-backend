@@ -20,7 +20,11 @@ router.post(
   verifyOtp,
 );
 
-router.post("/refresh", rateLimiter({ name: "refresh", seconds: 60, maxRequests: 120 }), refreshTokens);
+router.post(
+  "/refresh",
+  rateLimiter({ name: "refresh", seconds: 60, maxRequests: 120, allowIfRedisDown: true }),
+  refreshTokens,
+);
 router.post("/logout", logout);
 
 export const authRoutes = router;

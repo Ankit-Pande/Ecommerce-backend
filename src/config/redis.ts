@@ -21,10 +21,14 @@ local count = redis.call('INCR', KEYS[1])
 if redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
 return count`;
 
+// Adds 1 to a counter that resets after the given seconds, and returns the new count.
 export async function countInWindow(key: string, seconds: number): Promise<number> {
   return Number(await redis.eval(COUNT_SCRIPT, 1, key, seconds));
 }
 
+const loadingNow = new Map<string, Promise<string>>();
+
+// Returns the cached value, or loads it once (other callers wait for the same load) and caches it for 5 minutes.
 export async function getOrSetCache<T>(name: string, loadFromDb: () => Promise<T>): Promise<T> {
   const version = await redis.get(CACHE_VERSION_KEY).catch(() => undefined);
   if (version === undefined) return loadFromDb();
@@ -33,11 +37,21 @@ export async function getOrSetCache<T>(name: string, loadFromDb: () => Promise<T
   const saved = await redis.get(key).catch(() => null);
   if (saved) return JSON.parse(saved) as T;
 
-  const data = await loadFromDb();
-  await redis.set(key, JSON.stringify(data), "EX", CACHE_SECONDS).catch(() => null);
-  return data;
+  let loading = loadingNow.get(key);
+  if (!loading) {
+    loading = loadFromDb()
+      .then(async (data) => {
+        const json = JSON.stringify(data) ?? "null";
+        await redis.set(key, json, "EX", CACHE_SECONDS).catch(() => null);
+        return json;
+      })
+      .finally(() => loadingNow.delete(key));
+    loadingNow.set(key, loading);
+  }
+  return JSON.parse(await loading) as T;
 }
 
+// Drops every cached page and search result at once by moving to a new cache version.
 export async function clearCache() {
   await redis.incr(CACHE_VERSION_KEY).catch(() => null);
 }

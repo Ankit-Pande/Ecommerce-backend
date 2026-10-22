@@ -2,6 +2,7 @@ import { CancelledBy, Order, OrderStatus, PaymentMethod, Prisma } from "@prisma/
 import { lockUser, prisma } from "../config/db";
 import { env } from "../config/env";
 import { clearCache } from "../config/redis";
+import { logger } from "../config/winston";
 import { createRazorpayOrder, fetchVerifiedPayment } from "../integration/razorpay";
 import { AppError } from "../utils/appError";
 import { pageQuery, paginate } from "../utils/paginate";
@@ -13,6 +14,9 @@ const MAX_UNPAID_ONLINE_ORDERS = 2;
 const MAX_OPEN_COD_ORDERS = 10;
 const MIN_ONLINE_PAISE = 100;
 const MAX_ORDER_PAISE = 2147483647;
+const EXPIRY_BATCH = 100;
+const MAX_EXPIRY_ROUNDS = 20;
+const WEBHOOK_KEEP_MS = 30 * 24 * 60 * 60 * 1000;
 
 const NEXT_STATUS: Record<OrderStatus, OrderStatus[]> = {
   PENDING: [],
@@ -36,6 +40,7 @@ const ORDER_FIELDS = {
 
 type BuyNow = { productId: string; quantity: number } & Options;
 
+// What checkout sends back; the Razorpay key is included only for online payment.
 function checkoutResponse(order: Order) {
   return {
     orderId: order.id,
@@ -48,6 +53,7 @@ function checkoutResponse(order: Order) {
   };
 }
 
+// A repeated checkout (same idempotency key) returns the first order, but only for the same address and payment.
 function sameOrderAgain(order: Order, addressId: string, paymentMethod: PaymentMethod) {
   if (order.addressId !== addressId || order.paymentMethod !== paymentMethod) {
     throw new AppError("This order was already placed. Please check My orders.", 409);
@@ -55,6 +61,7 @@ function sameOrderAgain(order: Order, addressId: string, paymentMethod: PaymentM
   return checkoutResponse(order);
 }
 
+// Order lines from the cart (or the buy-now product) with today's prices; throws if anything is hidden or out of stock.
 async function getOrderLines(db: Prisma.TransactionClient, userId: string, lockProducts: boolean, buyNow?: BuyNow) {
   let items: { cartItemId: string | null; productId: string; quantity: number; size: string; color: string }[];
   if (buyNow) {
@@ -125,6 +132,7 @@ async function getOrderLines(db: Prisma.TransactionClient, userId: string, lockP
   return { lines, totalPaise };
 }
 
+// Limits open orders per user: 2 unpaid online orders, 10 undelivered COD orders.
 async function checkOpenOrderLimit(db: Prisma.TransactionClient, userId: string, paymentMethod: PaymentMethod) {
   const status = paymentMethod === "ONLINE" ? "PENDING" : "CONFIRMED";
   const limit = paymentMethod === "ONLINE" ? MAX_UNPAID_ONLINE_ORDERS : MAX_OPEN_COD_ORDERS;
@@ -132,6 +140,7 @@ async function checkOpenOrderLimit(db: Prisma.TransactionClient, userId: string,
   if (open >= limit) throw new AppError("You have too many open orders. Complete or cancel one first.", 409);
 }
 
+// Locks the order's row until the transaction ends and returns the order.
 async function lockOrder(db: Prisma.TransactionClient, orderId: string) {
   await db.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${orderId} FOR UPDATE`;
   const order = await db.order.findUnique({ where: { id: orderId } });
@@ -139,14 +148,45 @@ async function lockOrder(db: Prisma.TransactionClient, orderId: string) {
   return order;
 }
 
+// Cancels the order and puts its stock back; returns true when a product's stock status changed.
 async function cancelAndReturnStock(db: Prisma.TransactionClient, orderId: string, cancelledBy: CancelledBy) {
   await db.order.update({ where: { id: orderId }, data: { status: "CANCELLED", cancelledBy } });
   const items = await db.orderItem.findMany({ where: { orderId }, orderBy: { productId: "asc" } });
+  let stockStatusChanged = false;
   for (const item of items) {
-    await db.product.update({ where: { id: item.productId }, data: { stock: { increment: item.quantity } } });
+    const { stock } = await db.product.update({
+      where: { id: item.productId },
+      data: { stock: { increment: item.quantity } },
+      select: { stock: true },
+    });
+    if (stockStatus(stock) !== stockStatus(stock - item.quantity)) stockStatusChanged = true;
   }
+  return stockStatusChanged;
 }
 
+// Cancels an order; an unpaid online order also goes back to the cart (user row locked first, like checkout).
+async function cancelUnpaidOrder(db: Prisma.TransactionClient, order: Order, cancelledBy: CancelledBy) {
+  if (order.paymentMethod === "COD") return cancelAndReturnStock(db, order.id, cancelledBy);
+
+  const [owner] = await db.$queryRaw<{ isDeleted: boolean }[]>`
+    SELECT "isDeleted" FROM "User" WHERE "id" = ${order.userId} FOR UPDATE`;
+  const stockStatusChanged = await cancelAndReturnStock(db, order.id, cancelledBy);
+  if (owner.isDeleted) return stockStatusChanged;
+
+  const cart = await db.cart.upsert({ where: { userId: order.userId }, create: { userId: order.userId }, update: {} });
+  const items = await db.orderItem.findMany({ where: { orderId: order.id } });
+  for (const item of items) {
+    const line = { cartId: cart.id, productId: item.productId, size: item.size ?? "", color: item.color ?? "" };
+    await db.cartItem.upsert({
+      where: { cartId_productId_size_color: line },
+      create: { ...line, quantity: item.quantity },
+      update: {},
+    });
+  }
+  return stockStatusChanged;
+}
+
+// Throws unless the order is unpaid and not shipped yet.
 export function checkCanCancel(order: { status: OrderStatus; paymentStatus: string }) {
   if (order.status === "CANCELLED") throw new AppError("Order is already cancelled", 409);
   if (order.status === "SHIPPED" || order.status === "DELIVERED") {
@@ -161,6 +201,7 @@ export function checkCanCancel(order: { status: OrderStatus; paymentStatus: stri
 }
 
 export const orderService = {
+  // Places an order: checks stock and price, takes the stock, copies the address and removes the ordered cart lines.
   async checkout(
     userId: string,
     addressId: string,
@@ -243,6 +284,7 @@ export const orderService = {
     return checkoutResponse(result.order);
   },
 
+  // Gives the payment details again for an unpaid online order that has not expired.
   async retryPayment(userId: string, orderId: string) {
     const order = await prisma.order.findFirst({ where: { id: orderId, userId } });
     if (!order) throw new AppError("Order not found", 404);
@@ -258,6 +300,7 @@ export const orderService = {
     return checkoutResponse(order);
   },
 
+  // Confirms an order after Razorpay checkout, using the same code path as the webhook.
   async verifyPayment(userId: string, orderId: string, paymentId: string, signature: string) {
     const order = await prisma.order.findFirst({ where: { id: orderId, userId }, select: { razorpayOrderId: true } });
     if (!order?.razorpayOrderId) throw new AppError("Order not found", 404);
@@ -267,18 +310,25 @@ export const orderService = {
     return prisma.order.findUniqueOrThrow({ where: { id: orderId }, select: { status: true, paymentStatus: true } });
   },
 
+  // Marks a payment as received once per event; a late, wrong-amount or second payment marks the order for review.
   async handlePaymentCaptured(
     eventId: string,
     payment: { id: string; order_id: string; amount: number; currency: string },
   ) {
-    let stockReturned = false;
+    let stockStatusChanged = false;
 
     await prisma.$transaction(async (db) => {
       const firstTime = await db.webhookEvent.createMany({ data: [{ id: eventId }], skipDuplicates: true });
       if (firstTime.count === 0) return;
 
       const found = await db.order.findUnique({ where: { razorpayOrderId: payment.order_id }, select: { id: true } });
-      if (!found) throw new Error(`Order not found for Razorpay order ${payment.order_id}`);
+      if (!found) {
+        logger.warn("Payment for an unknown order ignored", {
+          paymentId: payment.id,
+          razorpayOrderId: payment.order_id,
+        });
+        return;
+      }
       const order = await lockOrder(db, found.id);
 
       if (order.paymentStatus !== "PENDING") {
@@ -299,29 +349,28 @@ export const orderService = {
         return;
       }
 
-      if (order.status === "PENDING") {
-        await cancelAndReturnStock(db, order.id, "SYSTEM");
-        stockReturned = true;
-      }
+      if (order.status === "PENDING") stockStatusChanged = await cancelAndReturnStock(db, order.id, "SYSTEM");
       await db.order.update({
         where: { id: order.id },
         data: { paymentStatus: "COMPLETED", razorpayPaymentId: payment.id, needsReview: true },
       });
     });
 
-    if (stockReturned) await clearCache();
+    if (stockStatusChanged) await clearCache();
   },
 
+  // Cancels an order for the user (their own only) or for an admin.
   async cancel(orderId: string, userId?: string) {
-    await prisma.$transaction(async (db) => {
+    const stockStatusChanged = await prisma.$transaction(async (db) => {
       const order = await lockOrder(db, orderId);
       if (userId && order.userId !== userId) throw new AppError("Order not found", 404);
       checkCanCancel(order);
-      await cancelAndReturnStock(db, orderId, userId ? "USER" : "ADMIN");
+      return cancelUnpaidOrder(db, order, userId ? "USER" : "ADMIN");
     });
-    await clearCache();
+    if (stockStatusChanged) await clearCache();
   },
 
+  // Moves an order forward (confirmed -> shipped -> delivered) or cancels it; COD is marked paid on delivery.
   async updateStatus(orderId: string, status: OrderStatus) {
     if (status === "CANCELLED") return orderService.cancel(orderId);
 
@@ -343,6 +392,7 @@ export const orderService = {
     });
   },
 
+  // Clears the review flag after the admin refunded the money in Razorpay.
   async markRefunded(orderId: string) {
     await prisma.$transaction(async (db) => {
       const order = await lockOrder(db, orderId);
@@ -354,28 +404,40 @@ export const orderService = {
     });
   },
 
+  // Cancels online orders not paid within 30 minutes (runs every minute, 100 at a time, up to 2,000 per run).
   async releaseExpiredOrders() {
-    const expired = await prisma.order.findMany({
-      where: {
-        paymentMethod: "ONLINE",
-        status: "PENDING",
-        paymentStatus: "PENDING",
-        paymentExpiresAt: { lte: new Date() },
-      },
-      select: { id: true },
-      take: 100,
-    });
-
-    for (const { id } of expired) {
-      await prisma.$transaction(async (db) => {
-        const order = await lockOrder(db, id);
-        if (order.status !== "PENDING" || order.paymentStatus !== "PENDING") return;
-        await cancelAndReturnStock(db, id, "SYSTEM");
+    let stockStatusChanged = false;
+    for (let round = 0; round < MAX_EXPIRY_ROUNDS; round++) {
+      const expired = await prisma.order.findMany({
+        where: {
+          paymentMethod: "ONLINE",
+          status: "PENDING",
+          paymentStatus: "PENDING",
+          paymentExpiresAt: { lte: new Date() },
+        },
+        select: { id: true },
+        take: EXPIRY_BATCH,
       });
+
+      for (const { id } of expired) {
+        const changed = await prisma.$transaction(async (db) => {
+          const order = await lockOrder(db, id);
+          if (order.status !== "PENDING" || order.paymentStatus !== "PENDING") return false;
+          return cancelUnpaidOrder(db, order, "SYSTEM");
+        });
+        if (changed) stockStatusChanged = true;
+      }
+      if (expired.length < EXPIRY_BATCH) break;
     }
-    if (expired.length > 0) await clearCache();
+    if (stockStatusChanged) await clearCache();
   },
 
+  // Deletes saved Razorpay webhook ids older than 30 days (Razorpay retries a webhook for 24 hours at most).
+  async deleteOldWebhookEvents() {
+    await prisma.webhookEvent.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - WEBHOOK_KEEP_MS) } } });
+  },
+
+  // The user's orders, newest first, with their items.
   async listForUser(userId: string, status: OrderStatus[] | undefined, cursor: string | undefined, limit: number) {
     const orders = await prisma.order.findMany({
       where: { userId, ...(status && { status: { in: status } }) },
@@ -391,6 +453,7 @@ export const orderService = {
     return paginate(orders, limit);
   },
 
+  // One of the user's orders with items and the delivery address.
   async getForUser(userId: string, orderId: string) {
     const order = await prisma.order.findFirst({
       where: { id: orderId, userId },
@@ -413,7 +476,7 @@ export const orderService = {
             color: true,
             pricePaise: true,
             quantity: true,
-            product: { select: { slug: true, description: true } },
+            product: { select: { slug: true } },
           },
         },
       },

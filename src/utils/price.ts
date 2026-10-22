@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 
-const LOW_STOCK_AT = 5;
+export const LOW_STOCK_AT = 5;
 
 export const ACTIVE_CATEGORY = {
   isActive: true,
@@ -24,37 +24,41 @@ export const CARD_SELECT = {
 
 type CardRow = Prisma.ProductGetPayload<{ select: typeof CARD_SELECT }>;
 
+// The discount that applies right now: 0 once the offer end date has passed.
 function currentDiscount(discountPercent: number, offerEndsAt?: Date | null): number {
   if (offerEndsAt && offerEndsAt.getTime() <= Date.now()) return 0;
   return discountPercent;
 }
 
+// The price after discount, rounded to whole rupees. This is the only discount formula in the app.
 export function finalPrice(pricePaise: number, discountPercent: number, offerEndsAt?: Date | null): number {
   const percent = currentDiscount(discountPercent, offerEndsAt);
   return pricePaise - Math.round((pricePaise * percent) / 10000) * 100;
 }
 
+// Turns a stock number into the status shoppers see.
 export function stockStatus(stock: number): "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK" {
   if (stock <= 0) return "OUT_OF_STOCK";
   if (stock <= LOW_STOCK_AT) return "LOW_STOCK";
   return "IN_STOCK";
 }
 
-export function productCard(p: CardRow) {
+// The product card every customer-facing list sends (home, catalog, search, cart, assistant).
+export function productCard(product: CardRow) {
   return {
-    id: p.id,
-    name: p.name,
-    slug: p.slug,
-    image: p.images[0] ?? null,
-    pricePaise: p.pricePaise,
-    offerEndsAt: p.offerEndsAt,
-    discountPercent: currentDiscount(p.discountPercent, p.offerEndsAt),
-    finalPricePaise: finalPrice(p.pricePaise, p.discountPercent, p.offerEndsAt),
-    stockStatus: stockStatus(p.stock),
+    id: product.id,
+    name: product.name,
+    slug: product.slug,
+    image: product.images[0] ?? null,
+    pricePaise: product.pricePaise,
+    offerEndsAt: product.offerEndsAt,
+    discountPercent: currentDiscount(product.discountPercent, product.offerEndsAt),
+    finalPricePaise: finalPrice(product.pricePaise, product.discountPercent, product.offerEndsAt),
+    stockStatus: stockStatus(product.stock),
     rating: {
-      average: p.ratingCount === 0 ? 0 : Math.round((p.ratingSum / p.ratingCount) * 10) / 10,
-      count: p.ratingCount,
+      average: product.ratingCount === 0 ? 0 : Math.round((product.ratingSum / product.ratingCount) * 10) / 10,
+      count: product.ratingCount,
     },
-    hasOptions: p.sizes.length > 0 || p.colors.length > 1,
+    hasOptions: product.sizes.length > 0 || product.colors.length > 1,
   };
 }

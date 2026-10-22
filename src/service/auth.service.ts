@@ -5,9 +5,13 @@ import { AppError } from "../utils/appError";
 import { otpService } from "./otp.service";
 import { tokenService } from "./token.service";
 
-const cleanPhone = (phone: string) => phone.replace(/\D/g, "").slice(-10);
+// Keeps the last 10 digits of a phone number ("+91 98765-43210" -> "9876543210").
+function cleanPhone(phone: string) {
+  return phone.replace(/\D/g, "").slice(-10);
+}
 
 export const authService = {
+  // Sends a login OTP unless the account is blocked.
   async requestOtp(phone: string) {
     const mobile = cleanPhone(phone);
     const user = await prisma.user.findUnique({ where: { phone: mobile }, select: { isBlocked: true } });
@@ -16,6 +20,7 @@ export const authService = {
     await otpService.send(mobile);
   },
 
+  // Checks the OTP, creates the user on first login, and starts a new session.
   async verifyOtpAndLogin(phone: string, otp: string) {
     const mobile = cleanPhone(phone);
     await otpService.verify(mobile, otp);
@@ -30,7 +35,6 @@ export const authService = {
         phone: true,
         name: true,
         email: true,
-        alternatePhone: true,
         role: true,
         isBlocked: true,
         isDeleted: true,

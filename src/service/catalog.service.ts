@@ -2,9 +2,10 @@ import { createHash } from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../config/db";
 import { getOrSetCache } from "../config/redis";
-import { pageQuery, paginate } from "../utils/paginate";
 import { ACTIVE_CATEGORY, CARD_SELECT, productCard } from "../utils/price";
-import { titleCase } from "../utils/text";
+import { ON_OFFER, readQuestion, searchIds, VISIBLE_PRODUCT } from "./assistant.search";
+
+type Sort = "latest" | "price_asc" | "price_desc" | "discount" | "rating";
 
 export type CatalogQuery = {
   q?: string;
@@ -19,184 +20,116 @@ export type CatalogQuery = {
   minPricePaise?: number;
   maxPricePaise?: number;
   discount?: boolean;
-  sort: "latest" | "price_asc" | "price_desc" | "discount" | "rating";
+  minRating?: number;
+  sort?: Sort;
   cursor?: string;
   limit: number;
 };
 
-const SORT_ORDER: Record<CatalogQuery["sort"], Prisma.ProductOrderByWithRelationInput[]> = {
-  latest: [{ createdAt: "desc" }, { id: "desc" }],
-  price_asc: [{ sellPaise: "asc" }, { id: "asc" }],
-  price_desc: [{ sellPaise: "desc" }, { id: "desc" }],
-  discount: [{ discountPercent: "desc" }, { id: "desc" }],
-  rating: [{ ratingAverage: "desc" }, { id: "desc" }],
+const SEARCH_RESULTS = 500;
+const NO_RESULTS = { items: [], nextCursor: null };
+
+// ORDER BY for one column (ties broken by id) and the condition "comes after the cursor product" in that order.
+function sortBy(column: string, direction: "ASC" | "DESC") {
+  const field = Prisma.raw(`"${column}"`);
+  const order = Prisma.raw(direction);
+  const after = Prisma.raw(direction === "ASC" ? ">" : "<");
+  return {
+    order: Prisma.sql`product.${field} ${order}, product."id" ${order}`,
+    after: (cursor: string) =>
+      Prisma.sql`(product.${field}, product."id") ${after} (SELECT ${field}, "id" FROM "Product" WHERE "id" = ${cursor})`,
+  };
+}
+
+const SORTS: Record<Sort, ReturnType<typeof sortBy>> = {
+  latest: sortBy("createdAt", "DESC"),
+  price_asc: sortBy("sellPaise", "ASC"),
+  price_desc: sortBy("sellPaise", "DESC"),
+  discount: sortBy("discountPercent", "DESC"),
+  rating: sortBy("ratingAverage", "DESC"),
 };
 
-const NUMBER = String.raw`(\d[\d,]*(?:\.\d+)?)\s*(k|hazar|lakh|lac)?\b`;
-const RUPEE_WORD = String.raw`(?:rs\.?|rupees?|rupaye|rupay)?`;
-const PRICE_RANGE = new RegExp(String.raw`${NUMBER}\s*(?:-|to|se)\s*${NUMBER}`, "i");
-const PRICE_BELOW = new RegExp(
-  String.raw`(?:under|below|upto|up to|less than|max)\s*(?:rs\.?|₹)?\s*${NUMBER}|${NUMBER}\s*${RUPEE_WORD}\s*(?:tak|(?:ke )?and[ae]r|(?:ke |se )?n(?:ee|i)chh?e|se kam|me|mein|ka|ki|ke)\b`,
-  "i",
-);
-const PRICE_ABOVE = new RegExp(
-  String.raw`(?:above|over|more than|min)\s*(?:rs\.?|₹)?\s*${NUMBER}|${NUMBER}\s*${RUPEE_WORD}\s*(?:se upar|se zyada|ke upar)`,
-  "i",
-);
-const PRICE_BARE = new RegExp(
-  String.raw`(₹|\brs\.?)?\s*\b(\d[\d,]*(?:\.\d+)?)\s*(k|hazar|lakh|lac)?\b(?!\s*(?:gb|tb|mb|mah|mp|hz|inch|inches|w|watt|ml|kg|cm|mm|years?|saal|sal|months?|model|number|no|size|uk)\b)`,
-  "gi",
-);
-const MIN_BARE_PRICE = 500;
-
-function toPaise(digits: string, unit?: string): number {
-  const rupees = Number(digits.replace(/,/g, ""));
-  const multiplier = !unit ? 1 : unit.toLowerCase().startsWith("l") ? 100000 : 1000;
-  return Math.round(rupees * multiplier * 100);
-}
-
-export function readBudget(search: string): { text: string; minPaise?: number; maxPaise?: number; bare?: boolean } {
-  const range = search.match(PRICE_RANGE);
-  const above = search.match(PRICE_ABOVE);
-  const below = search.match(PRICE_BELOW);
-
-  let budget: { minPaise?: number; maxPaise?: number } = {};
-  let priceText = "";
-  if (range) {
-    const low = toPaise(range[1], range[2] ?? range[4]);
-    const high = toPaise(range[3], range[4]);
-    budget = { minPaise: Math.min(low, high), maxPaise: Math.max(low, high) };
-    priceText = range[0];
-  } else if (above) {
-    budget = { minPaise: toPaise(above[1] ?? above[3], above[2] ?? above[4]) };
-    priceText = above[0];
-  } else if (below) {
-    budget = { maxPaise: toPaise(below[1] ?? below[3], below[2] ?? below[4]) };
-    priceText = below[0];
-  } else {
-    for (const match of search.matchAll(PRICE_BARE)) {
-      const paise = toPaise(match[2], match[3]);
-      if (match[1] || match[3] || paise >= MIN_BARE_PRICE * 100) {
-        budget = { maxPaise: paise };
-        priceText = match[0];
-        break;
-      }
-    }
+// SQL conditions for the filters picked on the page: category, section, brand, colour, size, who, price, offer, rating.
+function pageFilters(query: CatalogQuery): Prisma.Sql[] {
+  const where: Prisma.Sql[] = [];
+  if (query.category) {
+    where.push(Prisma.sql`product."categoryId" IN (SELECT category."id" FROM "Category" category
+      LEFT JOIN "Category" parent ON parent."id" = category."parentId"
+      WHERE category."slug" = ${query.category} OR parent."slug" = ${query.category})`);
   }
-
-  const tidy = (text: string) =>
-    text
-      .replace(/₹|\brs\b\.?/gi, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  if (!priceText || (budget.maxPaise ?? budget.minPaise ?? 0) < 10000) return { text: tidy(search) };
-
-  const bare = !range && !above && !below;
-  return { text: tidy(search.replace(priceText, " ")), ...budget, ...(bare && { bare }) };
+  if (query.subcategory) {
+    where.push(Prisma.sql`product."categoryId" IN (SELECT "id" FROM "Category"
+      WHERE "slug" = ${query.subcategory} AND "parentId" IS NOT NULL)`);
+  }
+  if (query.section === "trending") where.push(Prisma.sql`product."isTrending"`);
+  if (query.section === "featured") where.push(Prisma.sql`product."isFeatured"`);
+  if (query.brand) {
+    where.push(Prisma.sql`product."brandId" IN (SELECT "id" FROM "Brand"
+      WHERE "isActive" AND "slug" IN (${Prisma.join(query.brand)}))`);
+  }
+  if (query.color) where.push(Prisma.sql`product."colors" && ARRAY[${Prisma.join(query.color)}]::text[]`);
+  if (query.size) where.push(Prisma.sql`product."sizes" && ARRAY[${Prisma.join(query.size)}]::text[]`);
+  if (query.gender) where.push(Prisma.sql`product."gender" IN (${Prisma.join(query.gender)})`);
+  if (query.ageGroup) where.push(Prisma.sql`product."ageGroup" IN (${Prisma.join(query.ageGroup)})`);
+  if (query.minPricePaise !== undefined) where.push(Prisma.sql`product."sellPaise" >= ${query.minPricePaise}`);
+  if (query.maxPricePaise !== undefined) where.push(Prisma.sql`product."sellPaise" <= ${query.maxPricePaise}`);
+  if (query.discount) where.push(ON_OFFER);
+  if (query.minRating) where.push(Prisma.sql`product."ratingAverage" >= ${query.minRating}`);
+  return where;
 }
 
-async function matchEveryWord(words: string[]): Promise<Prisma.ProductWhereInput> {
-  const conditions = await Promise.all(
-    words.map(async (word) => {
-      const contains = { contains: word, mode: "insensitive" as const };
-      const [brands, categories] = await Promise.all([
-        prisma.brand.findMany({ where: { name: contains, isActive: true }, select: { id: true } }),
-        prisma.category.findMany({
-          where: { OR: [{ name: contains }, { parent: { name: contains } }] },
-          select: { id: true },
-        }),
-      ]);
-      return {
-        OR: [
-          { name: contains },
-          { description: contains },
-          { colors: { has: titleCase(word) } },
-          { brandId: { in: brands.map((b) => b.id) } },
-          { categoryId: { in: categories.map((c) => c.id) } },
-        ],
-      };
-    }),
+// One page from a list of ids: cards of the first `limit` ids (hidden products dropped) and the next cursor.
+async function pageOf(ids: string[], limit: number) {
+  const shown = ids.slice(0, limit);
+  const cards = await prisma.product.findMany({
+    where: { id: { in: shown }, isActive: true, category: ACTIVE_CATEGORY },
+    select: CARD_SELECT,
+  });
+  const cardById = new Map(cards.map((card) => [card.id, productCard(card)]));
+  return {
+    items: shown.flatMap((id) => cardById.get(id) ?? []),
+    nextCursor: ids.length > limit ? shown[shown.length - 1] : null,
+  };
+}
+
+// One page of every product that matches `where`, in the chosen sort; the cursor is the last id of the previous page.
+async function sortedPage(where: Prisma.Sql[], query: CatalogQuery) {
+  const sort = SORTS[query.sort ?? "latest"];
+  const conditions = query.cursor ? [...where, sort.after(query.cursor)] : where;
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT product."id" FROM "Product" product
+    WHERE ${Prisma.join(conditions, " AND ")}
+    ORDER BY ${sort.order}
+    LIMIT ${query.limit + 1}`;
+  return pageOf(
+    rows.map((row) => row.id),
+    query.limit,
   );
-  return { AND: conditions };
 }
 
-async function similarSpellingIds(text: string): Promise<string[]> {
-  const [, rows] = await prisma.$transaction([
-    prisma.$executeRaw`SET LOCAL statement_timeout = '2s'`,
-    prisma.$queryRaw<{ id: string }[]>`
-      SELECT p."id", similarity(p."name", ${text}) AS score FROM "Product" p
-      WHERE p."isActive" = true AND p."name" % ${text}
-      UNION
-      SELECT p."id", similarity(p."name", ${text}) FROM "Product" p
-      WHERE p."isActive" = true AND p."brandId" IN (SELECT "id" FROM "Brand" WHERE "name" % ${text})
-      UNION
-      SELECT p."id", similarity(p."name", ${text}) FROM "Product" p
-      WHERE p."isActive" = true AND p."categoryId" IN (
-        SELECT c."id" FROM "Category" c LEFT JOIN "Category" pc ON pc."id" = c."parentId"
-        WHERE c."name" % ${text} OR pc."name" % ${text})
-      ORDER BY 2 DESC
-      LIMIT 50`,
-  ]);
-  return rows.map((row) => row.id);
+// Text search with the assistant's search (page filters included): best match first, or every match in the chosen sort.
+async function searchProducts(text: string, query: CatalogQuery, filters: Prisma.Sql[]) {
+  const question = await readQuestion(text);
+  const askedSomething =
+    question.words.length > 0 || Object.keys(question).some((key) => key !== "text" && key !== "words");
+  if (!askedSomething) return NO_RESULTS;
+
+  const { ids, match } = await searchIds(question, SEARCH_RESULTS, { where: filters, spelling: true });
+  if (ids.length === 0) return NO_RESULTS;
+  if (query.sort) return sortedPage([...match, ...filters], query);
+
+  const start = query.cursor ? ids.indexOf(query.cursor) + 1 : 0;
+  if (query.cursor && start === 0) return NO_RESULTS;
+  return pageOf(ids.slice(start, start + query.limit + 1), query.limit);
 }
 
 export const catalogService = {
+  // One page of the product list (browse or search), cached for 5 minutes per exact query.
   async list(query: CatalogQuery) {
-    const budget = readBudget(query.q ?? "");
-    const words = budget.text
-      .replace(/\bt\s?shirt/gi, "t-shirt")
-      .split(/\s+/)
-      .filter((word) => word.length >= 2)
-      .slice(0, 6);
-    if (budget.text.length > 0 && words.length === 0) return { items: [], nextCursor: null };
-
-    const minPaise = query.minPricePaise ?? budget.minPaise;
-    const maxPaise = query.maxPricePaise ?? budget.maxPaise;
-    const cacheKey = createHash("sha1")
-      .update(JSON.stringify({ ...query, words, minPaise, maxPaise }))
-      .digest("hex");
-
-    return getOrSetCache(`catalog:${cacheKey}`, async () => {
-      const filters: Prisma.ProductWhereInput[] = [{ isActive: true, category: ACTIVE_CATEGORY }];
-      if (query.category) {
-        filters.push({
-          OR: [{ category: { slug: query.category } }, { category: { parent: { slug: query.category } } }],
-        });
-      }
-      if (query.subcategory) filters.push({ category: { slug: query.subcategory, parentId: { not: null } } });
-      if (query.section === "trending") filters.push({ isTrending: true });
-      if (query.section === "featured") filters.push({ isFeatured: true });
-      if (query.brand) filters.push({ brand: { slug: { in: query.brand }, isActive: true } });
-      if (query.color) filters.push({ colors: { hasSome: query.color } });
-      if (query.size) filters.push({ sizes: { hasSome: query.size } });
-      if (query.gender) filters.push({ gender: { in: query.gender } });
-      if (query.ageGroup) filters.push({ ageGroup: { in: query.ageGroup } });
-      if (minPaise !== undefined) filters.push({ sellPaise: { gte: minPaise } });
-      if (maxPaise !== undefined) filters.push({ sellPaise: { lte: maxPaise } });
-      if (query.discount) {
-        filters.push({ discountPercent: { gt: 0 }, OR: [{ offerEndsAt: null }, { offerEndsAt: { gt: new Date() } }] });
-      }
-
-      const rows = await prisma.product.findMany({
-        where: { AND: words.length > 0 ? [...filters, await matchEveryWord(words)] : filters },
-        select: CARD_SELECT,
-        orderBy: SORT_ORDER[query.sort],
-        ...pageQuery(query.cursor, query.limit),
-      });
-
-      if (words.length > 0 && rows.length === 0 && !query.cursor) {
-        const ids = await similarSpellingIds(words.join(" "));
-        if (ids.length === 0) return { items: [], nextCursor: null };
-        const similar = await prisma.product.findMany({
-          where: { AND: [...filters, { id: { in: ids } }] },
-          select: CARD_SELECT,
-        });
-        similar.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
-        return { items: similar.slice(0, query.limit).map(productCard), nextCursor: null };
-      }
-
-      const page = paginate(rows, query.limit);
-      return { items: page.items.map(productCard), nextCursor: page.nextCursor };
+    const cacheKey = createHash("sha1").update(JSON.stringify(query)).digest("hex");
+    return getOrSetCache(`catalog:${cacheKey}`, () => {
+      const filters = pageFilters(query);
+      return query.q ? searchProducts(query.q, query, filters) : sortedPage([VISIBLE_PRODUCT, ...filters], query);
     });
   },
 };

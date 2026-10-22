@@ -1,11 +1,19 @@
 import { z } from "zod";
 import { AGE_GROUPS, GENDERS, idParams, orderStatus, pageParams, queryBoolean, slug, uuid } from "./common";
 
-const formBoolean = z.preprocess((v) => (v === "true" ? true : v === "false" ? false : v), z.boolean());
-const emptyToNull = (v: unknown) => (v === "" ? null : v);
-const clearableEnum = <T extends readonly [string, ...string[]]>(values: T) =>
-  z.preprocess(emptyToNull, z.enum(values).nullable());
+const formBoolean = z.preprocess((value) => (value === "true" ? true : value === "false" ? false : value), z.boolean());
 
+// Form fields send "" for "no value"; this turns it into null.
+function emptyToNull(value: unknown) {
+  return value === "" ? null : value;
+}
+
+// An optional choice from a fixed list that the admin can also clear.
+function clearableEnum<T extends readonly [string, ...string[]]>(values: T) {
+  return z.preprocess(emptyToNull, z.enum(values).nullable());
+}
+
+// Reads specs typed as "Key: value" lines (from a form) into an object; JSON objects pass through.
 function readSpecs(value: unknown) {
   if (typeof value !== "string") return value;
   const lines = value
@@ -17,7 +25,7 @@ function readSpecs(value: unknown) {
 }
 
 const optionList = z.preprocess(
-  (v) => (typeof v === "string" ? v.split(",") : v),
+  (value) => (typeof value === "string" ? value.split(",") : value),
   z
     .array(z.string().trim().max(30))
     .transform((items) => [...new Set(items.filter(Boolean))])
@@ -113,7 +121,7 @@ export const updateBrandSchema = z.object({
 const bannerLink = z
   .string()
   .refine(
-    (v) => (v.startsWith("/") && !v.startsWith("//")) || /^https?:\/\//.test(v),
+    (link) => (link.startsWith("/") && !link.startsWith("//")) || /^https?:\/\//.test(link),
     "Use a relative path or HTTP URL",
   );
 

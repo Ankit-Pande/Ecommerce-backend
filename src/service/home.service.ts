@@ -5,6 +5,7 @@ import { ACTIVE_CATEGORY, CARD_SELECT, productCard } from "../utils/price";
 const SECTION_SIZE = 10;
 
 export const homeService = {
+  // Banners, categories and the trending, featured, newest and offer rows (cached).
   async getHome() {
     return getOrSetCache("home", async () => {
       const visible = { isActive: true, category: ACTIVE_CATEGORY };

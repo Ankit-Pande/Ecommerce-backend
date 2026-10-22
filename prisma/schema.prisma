@@ -42,14 +42,13 @@ enum CancelledBy {
 }
 
 model User {
-  id             String  @id @default(uuid())
-  phone          String  @unique
-  alternatePhone String?
-  name           String?
-  email          String? @unique
-  role           Role    @default(USER)
-  isBlocked      Boolean @default(false)
-  isDeleted      Boolean @default(false)
+  id        String  @id @default(uuid())
+  phone     String  @unique
+  name      String?
+  email     String? @unique
+  role      Role    @default(USER)
+  isBlocked Boolean @default(false)
+  isDeleted Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -163,8 +162,9 @@ model Product {
   ratingCount   Int   @default(0)
   ratingAverage Float @default(0)
 
-  embedding  Unsupported("halfvec(768)")?
-  searchText Unsupported("tsvector")?     @default(dbgenerated("to_tsvector('english'::regconfig, ((COALESCE(name, ''::text) || ' '::text) || COALESCE((specs)::text, ''::text)))"))
+  embedding       Unsupported("halfvec(768)")?
+  searchText      Unsupported("tsvector")?     @default(dbgenerated("to_tsvector('english'::regconfig, ((COALESCE(name, ''::text) || ' '::text) || COALESCE((specs)::text, ''::text)))"))
+  descriptionText Unsupported("tsvector")?     @default(dbgenerated("to_tsvector('english'::regconfig, description)"))
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -183,9 +183,9 @@ model Product {
   @@index([isActive, isFeatured])
   @@index([discountPercent, offerEndsAt])
   @@index([name(ops: raw("gin_trgm_ops"))], type: Gin)
-  @@index([description(ops: raw("gin_trgm_ops"))], type: Gin)
   @@index([colors], type: Gin)
   @@index([searchText], type: Gin)
+  @@index([descriptionText], type: Gin)
 }
 
 model Cart {

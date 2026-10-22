@@ -40,55 +40,62 @@ const EMBEDDING_FIELDS = [
   "specs",
 ] as const;
 
-function toProductData(p: ProductInput, images: string[]) {
+// The database row for a new product, with sellPaise worked out from price and discount.
+function toProductData(product: ProductInput, images: string[]) {
   return {
-    name: p.name,
-    slug: p.slug,
-    description: p.description,
-    pricePaise: p.pricePaise,
-    discountPercent: p.discountPercent,
-    sellPaise: finalPrice(p.pricePaise, p.discountPercent, p.offerEndsAt),
-    offerEndsAt: p.offerEndsAt,
-    stock: p.stock,
-    categoryId: p.categoryId,
-    brandId: p.brandId,
-    colors: (p.colors ?? []).map(titleCase),
-    sizes: p.sizes ?? [],
-    gender: p.gender,
-    ageGroup: p.ageGroup,
-    specs: p.specs ?? Prisma.DbNull,
-    isTrending: p.isTrending ?? false,
-    isFeatured: p.isFeatured ?? false,
+    name: product.name,
+    slug: product.slug,
+    description: product.description,
+    pricePaise: product.pricePaise,
+    discountPercent: product.discountPercent,
+    sellPaise: finalPrice(product.pricePaise, product.discountPercent, product.offerEndsAt),
+    offerEndsAt: product.offerEndsAt,
+    stock: product.stock,
+    categoryId: product.categoryId,
+    brandId: product.brandId,
+    colors: (product.colors ?? []).map(titleCase),
+    sizes: product.sizes ?? [],
+    gender: product.gender,
+    ageGroup: product.ageGroup,
+    specs: product.specs ?? Prisma.DbNull,
+    isTrending: product.isTrending ?? false,
+    isFeatured: product.isFeatured ?? false,
     images,
   };
 }
 
+// Throws unless the parent exists and is a top-level category (only two levels are allowed).
 async function checkParentCategory(parentId: string) {
   const parent = await prisma.category.findUnique({ where: { id: parentId }, select: { parentId: true } });
   if (!parent) throw new AppError("Parent category not found", 404);
   if (parent.parentId) throw new AppError("Subcategory cannot have its own subcategory", 400);
 }
 
+// Throws when the admin may not block or change this user (self, super admin, or another admin for a normal admin).
 async function checkCanChangeUser(admin: Admin, userId: string) {
   if (userId === admin.userId) throw new AppError("You cannot do this on your own account", 400);
   const user = await prisma.user.findFirst({ where: { id: userId, isDeleted: false }, select: { role: true } });
   if (!user) throw new AppError("User not found", 404);
   if (user.role === "SUPER_ADMIN") throw new AppError("Super admin account cannot be changed", 403);
-  if (user.role === "ADMIN" && admin.role !== "SUPER_ADMIN")
+  if (user.role === "ADMIN" && admin.role !== "SUPER_ADMIN") {
     throw new AppError("Only a super admin can manage an admin", 403);
+  }
 }
 
 export const adminService = {
+  // Throws 409 when another product already uses the slug.
   async checkSlugFree(slug: string) {
     const taken = await prisma.product.findUnique({ where: { slug }, select: { id: true } });
     if (taken) throw new AppError("Slug already in use", 409);
   },
 
+  // Throws 404 when the product does not exist (checked before uploading images).
   async checkProductExists(id: string) {
     const product = await prisma.product.findUnique({ where: { id }, select: { id: true } });
     if (!product) throw new AppError("Product not found", 404);
   },
 
+  // Creates a product; at least one image is required.
   async createProduct(data: ProductInput, images: string[]) {
     if (images.length === 0) throw new AppError("At least one product image required", 400);
     const product = await prisma.product.create({ data: toProductData(data, images) });
@@ -96,12 +103,13 @@ export const adminService = {
     return product;
   },
 
+  // Creates many products at once; slugs that already exist are skipped and returned.
   async bulkCreateProducts(products: (ProductInput & { images: string[] })[]) {
-    const slugs = products.map((p) => p.slug);
+    const slugs = products.map((product) => product.slug);
     if (new Set(slugs).size !== slugs.length) throw new AppError("Duplicate slugs in the uploaded list", 400);
 
-    const categoryIds = [...new Set(products.map((p) => p.categoryId))];
-    const brandIds = [...new Set(products.flatMap((p) => (p.brandId ? [p.brandId] : [])))];
+    const categoryIds = [...new Set(products.map((product) => product.categoryId))];
+    const brandIds = [...new Set(products.flatMap((product) => (product.brandId ? [product.brandId] : [])))];
     const [categoryCount, brandCount, existing] = await Promise.all([
       prisma.category.count({ where: { id: { in: categoryIds } } }),
       prisma.brand.count({ where: { id: { in: brandIds } } }),
@@ -110,15 +118,16 @@ export const adminService = {
     if (categoryCount !== categoryIds.length) throw new AppError("One or more categoryId not found", 400);
     if (brandCount !== brandIds.length) throw new AppError("One or more brandId not found", 400);
 
-    const skipped = existing.map((p) => p.slug);
-    const toCreate = products.filter((p) => !skipped.includes(p.slug));
+    const skipped = existing.map((product) => product.slug);
+    const toCreate = products.filter((product) => !skipped.includes(product.slug));
     if (toCreate.length > 0) {
-      await prisma.product.createMany({ data: toCreate.map((p) => toProductData(p, p.images)) });
+      await prisma.product.createMany({ data: toCreate.map((product) => toProductData(product, product.images)) });
       await clearCache();
     }
     return { created: toCreate.length, skipped };
   },
 
+  // Changes a product, works out sellPaise again, and clears the embedding when its text changed.
   async updateProduct(id: string, data: Partial<ProductInput> & { isActive?: boolean }, newImages: string[]) {
     const product = await prisma.$transaction(async (db) => {
       await lockProduct(db, id);
@@ -155,6 +164,7 @@ export const adminService = {
     return product;
   },
 
+  // Sets one discount (and end date) on every product, or on one category and its subcategories.
   async applySale(data: { categoryId?: string; discountPercent: number; offerEndsAt?: Date | null }) {
     const percent = data.discountPercent;
     const offerEndsAt = percent > 0 ? (data.offerEndsAt ?? null) : null;
@@ -166,7 +176,7 @@ export const adminService = {
         select: { id: true },
       });
       if (categories.length === 0) throw new AppError("Category not found", 404);
-      onlyThese = Prisma.sql`WHERE "categoryId" IN (${Prisma.join(categories.map((c) => c.id))})`;
+      onlyThese = Prisma.sql`WHERE "categoryId" IN (${Prisma.join(categories.map((category) => category.id))})`;
     }
 
     const updated = await prisma.$executeRaw`
@@ -180,11 +190,13 @@ export const adminService = {
     return { updated };
   },
 
+  // Hides a product from shoppers (products are never deleted).
   async hideProduct(id: string) {
     await prisma.product.update({ where: { id }, data: { isActive: false } });
     await clearCache();
   },
 
+  // One product with every field the edit form needs.
   async getProduct(id: string) {
     const product = await prisma.product.findUnique({
       where: { id },
@@ -214,6 +226,7 @@ export const adminService = {
     return product;
   },
 
+  // All products, newest first, searchable by name, with the quantity held by unpaid orders.
   async listProducts(query: { q?: string; cursor?: string; limit: number }) {
     const rows = await prisma.product.findMany({
       where: query.q ? { name: { contains: query.q, mode: "insensitive" } } : {},
@@ -234,16 +247,17 @@ export const adminService = {
 
     const held = await prisma.orderItem.groupBy({
       by: ["productId"],
-      where: { productId: { in: page.items.map((p) => p.id) }, order: { status: "PENDING" } },
+      where: { productId: { in: page.items.map((product) => product.id) }, order: { status: "PENDING" } },
       _sum: { quantity: true },
     });
-    const items = page.items.map((p) => ({
-      ...p,
-      reservedQuantity: held.find((row) => row.productId === p.id)?._sum.quantity ?? 0,
+    const items = page.items.map((product) => ({
+      ...product,
+      reservedQuantity: held.find((row) => row.productId === product.id)?._sum.quantity ?? 0,
     }));
     return { items, nextCursor: page.nextCursor };
   },
 
+  // Every category with its subcategories, hidden ones too.
   async listCategories() {
     return prisma.category.findMany({
       where: { parentId: null },
@@ -262,6 +276,7 @@ export const adminService = {
     });
   },
 
+  // Creates a category, or a subcategory when parentId is given.
   async createCategory(data: { name: string; slug: string; parentId?: string }, image?: string) {
     if (data.parentId) await checkParentCategory(data.parentId);
     const category = await prisma.category.create({ data: { ...data, image } });
@@ -269,6 +284,7 @@ export const adminService = {
     return category;
   },
 
+  // Changes a category; a rename or move clears the embeddings of its products.
   async updateCategory(
     id: string,
     data: { name?: string; slug?: string; parentId?: string | null; isActive?: boolean },
@@ -291,6 +307,7 @@ export const adminService = {
     return category;
   },
 
+  // Deletes a category that has no products and no subcategories.
   async deleteCategory(id: string) {
     const [products, children] = await Promise.all([
       prisma.product.count({ where: { categoryId: id } }),
@@ -302,6 +319,7 @@ export const adminService = {
     await clearCache();
   },
 
+  // Every brand, hidden ones too.
   async listBrands() {
     return prisma.brand.findMany({
       select: { id: true, name: true, slug: true, logo: true, isActive: true },
@@ -309,20 +327,24 @@ export const adminService = {
     });
   },
 
+  // Creates a brand.
   async createBrand(data: { name: string; slug: string }, logo?: string) {
     const brand = await prisma.brand.create({ data: { ...data, logo } });
     await clearCache();
     return brand;
   },
 
+  // Renames, hides or shows a brand; a rename clears the embeddings of its products.
   async updateBrand(id: string, data: { name?: string; isActive?: boolean }) {
     const brand = await prisma.brand.update({ where: { id }, data });
-    if (data.name !== undefined)
+    if (data.name !== undefined) {
       await prisma.$executeRaw`UPDATE "Product" SET "embedding" = NULL WHERE "brandId" = ${id}`;
+    }
     await clearCache();
     return brand;
   },
 
+  // Deletes a brand that has no products.
   async deleteBrand(id: string) {
     const products = await prisma.product.count({ where: { brandId: id } });
     if (products > 0) {
@@ -332,6 +354,7 @@ export const adminService = {
     await clearCache();
   },
 
+  // Every home page banner in display order.
   async listBanners() {
     return prisma.banner.findMany({
       select: { id: true, image: true, link: true, position: true, isActive: true },
@@ -339,23 +362,27 @@ export const adminService = {
     });
   },
 
+  // Creates a home page banner.
   async createBanner(data: { link?: string; position: number }, image: string) {
     const banner = await prisma.banner.create({ data: { ...data, image } });
     await clearCache();
     return banner;
   },
 
+  // Changes a banner's link, position or visibility.
   async updateBanner(id: string, data: { link?: string | null; position?: number; isActive?: boolean }) {
     const banner = await prisma.banner.update({ where: { id }, data });
     await clearCache();
     return banner;
   },
 
+  // Deletes a banner.
   async deleteBanner(id: string) {
     await prisma.banner.delete({ where: { id } });
     await clearCache();
   },
 
+  // Today's paid orders and revenue (India time), and counts of orders waiting for payment, shipping or review.
   async getStats() {
     const indiaOffsetMs = 330 * 60 * 1000;
     const indiaToday = new Date(Date.now() + indiaOffsetMs);
@@ -382,6 +409,7 @@ export const adminService = {
     };
   },
 
+  // All orders, newest first, filtered by status or "needs review".
   async listOrders(query: { status?: OrderStatus; needsReview?: boolean; cursor?: string; limit: number }) {
     const rows = await prisma.order.findMany({
       where: {
@@ -399,6 +427,12 @@ export const adminService = {
         createdAt: true,
         shipName: true,
         shipPhone: true,
+        shipLine1: true,
+        shipLine2: true,
+        shipCity: true,
+        shipState: true,
+        shipPincode: true,
+        items: { select: { productName: true, quantity: true, size: true, color: true } },
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       ...pageQuery(query.cursor, query.limit),
@@ -406,6 +440,7 @@ export const adminService = {
     return paginate(rows, query.limit);
   },
 
+  // Customers, newest first, searchable by phone.
   async listUsers(query: { q?: string; cursor?: string; limit: number }) {
     const rows = await prisma.user.findMany({
       where: { isDeleted: false, ...(query.q && { phone: { contains: query.q } }) },
@@ -416,12 +451,14 @@ export const adminService = {
     return paginate(rows, query.limit);
   },
 
+  // Blocks or unblocks a user; blocking logs them out everywhere.
   async setUserBlock(admin: Admin, userId: string, isBlocked: boolean) {
     await checkCanChangeUser(admin, userId);
     await prisma.user.update({ where: { id: userId }, data: { isBlocked } });
     if (isBlocked) await tokenService.logoutAllDevices(userId);
   },
 
+  // Makes a user an admin or a normal user, and logs them out everywhere.
   async setUserRole(admin: Admin, userId: string, role: "USER" | "ADMIN") {
     await checkCanChangeUser(admin, userId);
     await prisma.user.update({ where: { id: userId }, data: { role } });
