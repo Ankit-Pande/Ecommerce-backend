@@ -19,7 +19,9 @@ function cleanText(text: string) {
 function questionError(message: { role: string; content: string }) {
   if (message.role !== "user") return "Last message must be a question";
   if (HTML.test(message.content)) return "HTML or script is not allowed";
-  if (message.content.split("\n").length > MAX_LINES) return `Write the question in at most ${MAX_LINES} lines`;
+  if (message.content.split("\n").length > MAX_LINES) {
+    return `Write the question in at most ${MAX_LINES} lines`;
+  }
   const text = cleanText(message.content);
   if (text.length < 2 || text.length > MAX_QUESTION_LENGTH) {
     return `Question must be 2 to ${MAX_QUESTION_LENGTH} characters`;

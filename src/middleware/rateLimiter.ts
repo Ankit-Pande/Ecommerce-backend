@@ -13,11 +13,13 @@ export function visitorIp(ip = "unknown") {
   if (ip.startsWith("::ffff:")) return ip.slice(7);
   if (!ip.includes(":")) return ip;
 
-  const [start, end = ""] = ip.split("::");
-  const head = start ? start.split(":") : [];
-  const tail = end ? end.split(":") : [];
-  const zeros = Array(Math.max(8 - head.length - tail.length, 0)).fill("0");
-  return [...head, ...zeros, ...tail].slice(0, 4).join(":");
+  const [leftPart = "", rightPart = ""] = ip.split("::");
+  const leftBlocks = leftPart ? leftPart.split(":") : [];
+  const rightBlocks = rightPart ? rightPart.split(":") : [];
+  const missingCount = Math.max(8 - leftBlocks.length - rightBlocks.length, 0);
+  const middleZeroBlocks = Array(missingCount).fill("0");
+  const fullAddress = [...leftBlocks, ...middleZeroBlocks, ...rightBlocks];
+  return fullAddress.slice(0, 4).join(":");
 }
 
 // Who a limit counts: the user of a valid access token, otherwise the visitor's IP.
@@ -26,7 +28,8 @@ function visitorOf(req: Request): string {
   const header = req.headers.authorization;
   if (header?.startsWith("Bearer ")) {
     try {
-      return verifyAccessToken(header.slice("Bearer ".length)).userId;
+      const token = header.slice("Bearer ".length);
+      return verifyAccessToken(token).userId;
     } catch {
       return visitorIp(req.ip);
     }
@@ -48,12 +51,16 @@ export function rateLimiter({ name, seconds, maxRequests, allowIfRedisDown = fal
   return async (req, _res, next) => {
     if (fromFrontendServer(req)) return next();
     try {
-      const count = await countInWindow(`rate:${name}:${visitorOf(req)}`, seconds);
-      if (count > maxRequests) return next(new AppError("Too many requests, please try again later.", 429));
+      const visitor = visitorOf(req);
+      const count = await countInWindow(`rate:${name}:${visitor}`, seconds);
+      if (count > maxRequests) {
+        return next(new AppError("Too many requests, please try again later.", 429));
+      }
       next();
     } catch (error) {
       logger.error("Rate limiter error", { error, name });
-      next(allowIfRedisDown ? undefined : new AppError("Service busy. Please try again shortly.", 503));
+      if (allowIfRedisDown) return next();
+      next(new AppError("Service busy. Please try again shortly.", 503));
     }
   };
 }

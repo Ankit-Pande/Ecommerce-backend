@@ -33,7 +33,8 @@ function currentDiscount(discountPercent: number, offerEndsAt?: Date | null): nu
 // The price after discount, rounded to whole rupees. This is the only discount formula in the app.
 export function finalPrice(pricePaise: number, discountPercent: number, offerEndsAt?: Date | null): number {
   const percent = currentDiscount(discountPercent, offerEndsAt);
-  return pricePaise - Math.round((pricePaise * percent) / 10000) * 100;
+  const discountRupees = Math.round((pricePaise * percent) / 10000);
+  return pricePaise - discountRupees * 100;
 }
 
 // Turns a stock number into the status shoppers see.

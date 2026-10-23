@@ -24,7 +24,8 @@ app.use(
   cors({
     // Lets in only our frontend sites (every site in development, and requests that send no Origin).
     origin: (origin, callback) => {
-      if (!origin || env.NODE_ENV === "development" || allowedOrigins.includes(origin)) return callback(null, true);
+      const allowed = !origin || env.NODE_ENV === "development" || allowedOrigins.includes(origin);
+      if (allowed) return callback(null, true);
       callback(new AppError("Not allowed by CORS", 403));
     },
     credentials: true,

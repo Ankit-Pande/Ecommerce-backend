@@ -8,7 +8,9 @@ const SLOW_REQUEST_MS = 1000;
 export const requestLogger = morgan<Request, Response>(
   (tokens, req, res) => {
     const responseTime = Number(tokens["response-time"](req, res) ?? -1);
-    const level = res.statusCode >= 500 ? "error" : responseTime > SLOW_REQUEST_MS ? "warn" : "info";
+    let level = "info";
+    if (res.statusCode >= 500) level = "error";
+    else if (responseTime > SLOW_REQUEST_MS) level = "warn";
     logger.log(level, "request", {
       requestId: res.locals.requestId,
       userId: req.user?.userId,

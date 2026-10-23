@@ -225,10 +225,10 @@ async function searchFromChat(messages: Message[]): Promise<{ question: Question
     const asked = await readQuestion(message.content);
     if (isActionText(message.content, asked)) break;
     if (asked.words.length > 0 || asked.categoryIds) {
-      const question = refines.reduce(
-        (base, extra) => ({ ...base, ...extra, words: base.words, text: `${base.text} ${extra.text}` }),
-        asked,
-      );
+      let question = asked;
+      for (const extra of refines) {
+        question = { ...question, ...extra, words: question.words, text: `${question.text} ${extra.text}` };
+      }
       return { question, page };
     }
     if (!hasFilters(asked)) break;
@@ -236,7 +236,10 @@ async function searchFromChat(messages: Message[]): Promise<{ question: Question
   }
 
   if (refines.length === 0) return null;
-  const question = refines.reduce((base, extra) => ({ ...base, ...extra, text: `${base.text} ${extra.text}` }));
+  let question = refines[0];
+  for (const extra of refines.slice(1)) {
+    question = { ...question, ...extra, text: `${question.text} ${extra.text}` };
+  }
   return canSearch(question) ? { question, page } : null;
 }
 
@@ -245,10 +248,13 @@ async function productAnswer(question: Question, page: number, language: Languag
   const found = await findProducts(question, page);
   if (found.products.length === 0) {
     const alternative = page === 0 ? await findAlternative(question) : null;
-    return alternative ? { reply: REPLIES[alternative.kind][language].replace("{values}", alternative.values) } : null;
+    if (!alternative) return null;
+    return { reply: REPLIES[alternative.kind][language].replace("{values}", alternative.values) };
   }
 
-  const title = page > 0 ? REPLIES.more : found.similar ? REPLIES.similar : REPLIES.found;
+  let title = REPLIES.found;
+  if (page > 0) title = REPLIES.more;
+  else if (found.similar) title = REPLIES.similar;
   const reply = found.askWho ? `${title[language]}\n${REPLIES.askWho[language]}` : title[language];
   return { reply, products: found.products, hasMore: found.hasMore, askWho: found.askWho };
 }
@@ -328,19 +334,23 @@ async function quickAction(user: ToolUser, question: string, language: Language)
       await cartService.removeItem(user.userId, named[0].id);
       return { reply: REPLIES.removed[language].replace("{name}", named[0].product.name) };
     }
-    if (named.length === 0 && CART_EMPTY.test(question)) return askToConfirm(user, "clear_cart", {}, language);
+    if (named.length === 0 && CART_EMPTY.test(question)) {
+      return askToConfirm(user, "clear_cart", {}, language);
+    }
     const choices = named.length > 1 ? named : items;
-    return {
-      reply: REPLIES.whichItem[language].replace("{names}", choices.map((item) => item.product.name).join(", ")),
-    };
+    const names = choices.map((item) => item.product.name).join(", ");
+    return { reply: REPLIES.whichItem[language].replace("{names}", names) };
   }
 
   if (ORDER_CANCEL.test(question)) {
     const orderNumber = question.match(ORDER_NUMBER)?.[0].toLowerCase();
     const { items: orders } = await orderService.listForUser(user.userId, undefined, undefined, 50);
-    const order = orderNumber
-      ? orders.find((item) => item.id.startsWith(orderNumber))
-      : orders.find((item) => ["PENDING", "CONFIRMED"].includes(item.status) && item.paymentStatus === "PENDING");
+    let order;
+    if (orderNumber) {
+      order = orders.find((item) => item.id.startsWith(orderNumber));
+    } else {
+      order = orders.find((item) => ["PENDING", "CONFIRMED"].includes(item.status) && item.paymentStatus === "PENDING");
+    }
     if (!order) return { reply: REPLIES.noOrderToCancel[language] };
     return askToConfirm(user, "cancel_order", { orderId: order.id }, language);
   }
@@ -353,21 +363,26 @@ async function quickAction(user: ToolUser, question: string, language: Language)
         `• ${item.product.name} × ${item.quantity} — ${priceText(item.product.finalPricePaise * item.quantity)}`,
     );
     const header = REPLIES.cart[language].replace("{count}", String(cart.items.length));
-    return { reply: [header, ...lines, `${REPLIES.total[language]}: ${priceText(cart.totalPaise)}`].join("\n") };
+    const total = `${REPLIES.total[language]}: ${priceText(cart.totalPaise)}`;
+    return { reply: [header, ...lines, total].join("\n") };
   }
 
   if (ORDER_SHOW.test(question)) {
     const orderNumber = question.match(ORDER_NUMBER)?.[0].toLowerCase();
-    const { items: orders } = await orderService.listForUser(user.userId, undefined, undefined, orderNumber ? 50 : 5);
+    const limit = orderNumber ? 50 : 5;
+    const { items: orders } = await orderService.listForUser(user.userId, undefined, undefined, limit);
     const shown = orderNumber ? orders.filter((order) => order.id.startsWith(orderNumber)) : orders;
-    if (shown.length === 0)
-      return { reply: orderNumber ? REPLIES.orderNotFound[language] : REPLIES.noOrders[language] };
+    if (shown.length === 0) {
+      const nothing = orderNumber ? REPLIES.orderNotFound : REPLIES.noOrders;
+      return { reply: nothing[language] };
+    }
     const lines = shown.map((order) => {
       const items = order.items.map((item) => `${item.productName} × ${item.quantity}`).join(", ");
       const date = order.createdAt.toISOString().slice(0, 10);
       return `• #${order.id.slice(0, 8).toUpperCase()} · ${STATUS_TEXT[order.status]} · ${priceText(order.totalPaise)} · ${date}\n  ${items}`;
     });
-    return { reply: [(orderNumber ? REPLIES.order : REPLIES.orders)[language], ...lines].join("\n") };
+    const title = orderNumber ? REPLIES.order : REPLIES.orders;
+    return { reply: [title[language], ...lines].join("\n") };
   }
   return null;
 }
@@ -443,7 +458,10 @@ export const assistantService = {
     if (action) return action;
 
     const aboutStore = isAction || SHOPPING_WORDS.test(question) || hasFilters(asked) || Boolean(asked.categoryIds);
-    if (!aboutStore) return { reply: (asked.words.length > 0 ? REPLIES.notFound : REPLIES.onlyStore)[language] };
+    if (!aboutStore) {
+      const answer = asked.words.length > 0 ? REPLIES.notFound : REPLIES.onlyStore;
+      return { reply: answer[language] };
+    }
     if (!geminiReady) return { reply: REPLIES.notFound[language] };
     const limitReply = await aiLimitReply(user, language);
     if (limitReply) return { reply: limitReply };

@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { AGE_GROUPS, GENDERS, idParams, orderStatus, pageParams, queryBoolean, slug, uuid } from "./common";
 
-const formBoolean = z.preprocess((value) => (value === "true" ? true : value === "false" ? false : value), z.boolean());
+const formBoolean = z.preprocess((value) => {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return value;
+}, z.boolean());
 
 // Form fields send "" for "no value"; this turns it into null.
 function emptyToNull(value: unknown) {

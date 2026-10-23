@@ -25,10 +25,14 @@ export const addressService = {
     return prisma.$transaction(async (db) => {
       await lockUser(db, userId);
       const count = await db.address.count({ where: { userId } });
-      if (count >= MAX_ADDRESSES) throw new AppError("Maximum 5 addresses allowed. Delete one first.", 400);
+      if (count >= MAX_ADDRESSES) {
+        throw new AppError("Maximum 5 addresses allowed. Delete one first.", 400);
+      }
 
       const isDefault = data.isDefault === true || count === 0;
-      if (isDefault) await db.address.updateMany({ where: { userId, isDefault: true }, data: { isDefault: false } });
+      if (isDefault) {
+        await db.address.updateMany({ where: { userId, isDefault: true }, data: { isDefault: false } });
+      }
       return db.address.create({ data: { ...data, userId, isDefault } });
     });
   },

@@ -194,7 +194,9 @@ const TOOLS: Record<string, Tool> = {
     async confirmText(user, _input, language) {
       const count = (await cartService.getCart(user.userId)).items.length;
       const hindi = language === "hi";
-      if (count === 0) throw new AppError(hindi ? "Cart pehle se khali hai." : "Your cart is already empty.");
+      if (count === 0) {
+        throw new AppError(hindi ? "Cart pehle se khali hai." : "Your cart is already empty.");
+      }
       return hindi ? `Cart ke saare ${count} items hata du?` : `Remove all ${count} items from your cart?`;
     },
     // Empties the cart.

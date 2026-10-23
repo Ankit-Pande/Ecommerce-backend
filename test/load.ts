@@ -106,7 +106,9 @@ async function shop(shopper: Shopper, categories: string[], productWords: string
       const body = { idempotencyKey: randomUUID(), addressId: shopper.addressId, paymentMethod: "COD" };
       const order = await measure("POST /api/order/checkout (COD)", "POST", "/api/order/checkout", { ...as, body });
       const orderId = order.json.data?.orderId;
-      if (orderId) await measure("PATCH /api/order/:id/cancel", "PATCH", `/api/order/${orderId}/cancel`, as);
+      if (orderId) {
+        await measure("PATCH /api/order/:id/cancel", "PATCH", `/api/order/${orderId}/cancel`, as);
+      }
     } else {
       for (const line of cart.json.data?.items ?? []) {
         await measure("DELETE /api/cart/:id", "DELETE", `/api/cart/${line.id}`, as);
@@ -143,10 +145,12 @@ function printReport() {
   console.table(Object.fromEntries(table));
 
   const allTimes = [...resultsByApi.values()].flatMap((result) => result.times).sort((a, b) => a - b);
-  const errors = [...resultsByApi.values()]
-    .flatMap((result) => [...result.answers])
-    .filter(([status]) => status === 0 || status >= 500)
-    .reduce((sum, [, calls]) => sum + calls, 0);
+  let errors = 0;
+  for (const result of resultsByApi.values()) {
+    for (const [status, calls] of result.answers) {
+      if (status === 0 || status >= 500) errors += calls;
+    }
+  }
   const slow95 = within(allTimes, 0.95);
   console.log(`Total: ${allTimes.length} calls in ${SECONDS} s = ${Math.round(allTimes.length / SECONDS)} a second`);
   console.log(`Errors (5xx or no answer): ${errors}. 95% of all calls within ${slow95} ms`);
@@ -155,7 +159,9 @@ function printReport() {
 
 // Usage: npm run test:load -- <shoppers> <seconds> (default 1000 for 120): logged-in shoppers shop at the same time.
 async function main() {
-  if (env.NODE_ENV !== "development") throw new Error("Run tests only with NODE_ENV=development (they add test data)");
+  if (env.NODE_ENV !== "development") {
+    throw new Error("Run tests only with NODE_ENV=development (they add test data)");
+  }
   if (SECONDS > 840) throw new Error("At most 840 seconds: a login token lasts 15 minutes");
   if (redis.status !== "ready") await new Promise((resolve) => redis.once("ready", resolve));
   const server = await startServer("warn");
@@ -178,9 +184,13 @@ async function main() {
   const { errors, slow95 } = printReport();
   const redisMemory = (await redis.info("memory")).match(/used_memory_human:(\S+)/)?.[1];
   console.log(`Redis: ${redisMemory} used, ${await redis.dbsize()} keys`);
-  if (errors > 0) console.log("FAIL: some calls got a server error or no answer");
-  else if (slow95 >= 1000) console.log("FAIL: no errors, but too slow (95% of calls took over 1 second)");
-  else console.log("PASS: no errors, 95% of calls within 1 second");
+  if (errors > 0) {
+    console.log("FAIL: some calls got a server error or no answer");
+  } else if (slow95 >= 1000) {
+    console.log("FAIL: no errors, but too slow (95% of calls took over 1 second)");
+  } else {
+    console.log("PASS: no errors, 95% of calls within 1 second");
+  }
   server.kill();
   await prisma.$disconnect();
   redis.disconnect();

@@ -61,8 +61,9 @@ export async function razorpayWebhook(req: Request, res: Response) {
     const event = JSON.parse(rawBody.toString());
     const payment = event.payload?.payment?.entity;
     if (event.event === "payment.captured" && payment) {
-      const eventId = req.headers["x-razorpay-event-id"];
-      await orderService.handlePaymentCaptured(typeof eventId === "string" ? eventId : payment.id, payment);
+      const headerId = req.headers["x-razorpay-event-id"];
+      const eventId = typeof headerId === "string" ? headerId : payment.id;
+      await orderService.handlePaymentCaptured(eventId, payment);
     }
     res.json({ success: true });
   } catch (error) {

@@ -11,13 +11,16 @@ export type Options = { size?: string; color?: string };
 // Checks the picked size and colour exist for the product (a single colour is picked by itself).
 export function chooseOptions(product: { sizes: string[]; colors: string[] }, picked: Options) {
   const size = picked.size?.trim() ?? "";
-  const color = picked.color?.trim() ?? (product.colors.length === 1 ? product.colors[0] : "");
-  if (product.sizes.length > 0 ? !product.sizes.includes(size) : size !== "") {
-    throw new AppError(product.sizes.length > 0 ? "Please choose a size" : "This product has no sizes", 400);
-  }
-  if (product.colors.length > 0 ? !product.colors.includes(color) : color !== "") {
-    throw new AppError(product.colors.length > 0 ? "Please choose a colour" : "This product has no colours", 400);
-  }
+  const onlyColor = product.colors.length === 1 ? product.colors[0] : "";
+  const color = picked.color?.trim() ?? onlyColor;
+
+  const hasSizes = product.sizes.length > 0;
+  if (hasSizes && !product.sizes.includes(size)) throw new AppError("Please choose a size", 400);
+  if (!hasSizes && size !== "") throw new AppError("This product has no sizes", 400);
+
+  const hasColors = product.colors.length > 0;
+  if (hasColors && !product.colors.includes(color)) throw new AppError("Please choose a colour", 400);
+  if (!hasColors && color !== "") throw new AppError("This product has no colours", 400);
   return { size, color };
 }
 

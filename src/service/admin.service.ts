@@ -106,22 +106,30 @@ export const adminService = {
   // Creates many products at once; slugs that already exist are skipped and returned.
   async bulkCreateProducts(products: (ProductInput & { images: string[] })[]) {
     const slugs = products.map((product) => product.slug);
-    if (new Set(slugs).size !== slugs.length) throw new AppError("Duplicate slugs in the uploaded list", 400);
+    if (new Set(slugs).size !== slugs.length) {
+      throw new AppError("Duplicate slugs in the uploaded list", 400);
+    }
 
     const categoryIds = [...new Set(products.map((product) => product.categoryId))];
-    const brandIds = [...new Set(products.flatMap((product) => (product.brandId ? [product.brandId] : [])))];
+    const brandIds: string[] = [];
+    for (const product of products) {
+      if (product.brandId && !brandIds.includes(product.brandId)) brandIds.push(product.brandId);
+    }
     const [categoryCount, brandCount, existing] = await Promise.all([
       prisma.category.count({ where: { id: { in: categoryIds } } }),
       prisma.brand.count({ where: { id: { in: brandIds } } }),
       prisma.product.findMany({ where: { slug: { in: slugs } }, select: { slug: true } }),
     ]);
-    if (categoryCount !== categoryIds.length) throw new AppError("One or more categoryId not found", 400);
+    if (categoryCount !== categoryIds.length) {
+      throw new AppError("One or more categoryId not found", 400);
+    }
     if (brandCount !== brandIds.length) throw new AppError("One or more brandId not found", 400);
 
     const skipped = existing.map((product) => product.slug);
     const toCreate = products.filter((product) => !skipped.includes(product.slug));
     if (toCreate.length > 0) {
-      await prisma.product.createMany({ data: toCreate.map((product) => toProductData(product, product.images)) });
+      const rows = toCreate.map((product) => toProductData(product, product.images));
+      await prisma.product.createMany({ data: rows });
       await clearCache();
     }
     return { created: toCreate.length, skipped };
@@ -141,6 +149,7 @@ export const adminService = {
       const pricePaise = newPrice ?? current.pricePaise;
       const discountPercent = data.discountPercent ?? current.discountPercent;
       const offerEndsAt = data.offerEndsAt !== undefined ? data.offerEndsAt : current.offerEndsAt;
+      const brandChange = brandId ? { connect: { id: brandId } } : { disconnect: true };
 
       const updated = await db.product.update({
         where: { id },
@@ -151,7 +160,7 @@ export const adminService = {
           ...(colors !== undefined && { colors: colors.map(titleCase) }),
           ...(specs !== undefined && { specs: specs ?? Prisma.DbNull }),
           ...(categoryId && { category: { connect: { id: categoryId } } }),
-          ...(brandId !== undefined && { brand: brandId ? { connect: { id: brandId } } : { disconnect: true } }),
+          ...(brandId !== undefined && { brand: brandChange }),
           ...(newImages.length > 0 && { images: newImages }),
         },
       });
@@ -294,7 +303,9 @@ export const adminService = {
       if (data.parentId === id) throw new AppError("Category cannot be its own parent", 400);
       await checkParentCategory(data.parentId);
       const children = await prisma.category.count({ where: { parentId: id } });
-      if (children > 0) throw new AppError("Category with subcategories cannot become a subcategory", 400);
+      if (children > 0) {
+        throw new AppError("Category with subcategories cannot become a subcategory", 400);
+      }
     }
 
     const category = await prisma.category.update({ where: { id }, data: { ...data, ...(image && { image }) } });

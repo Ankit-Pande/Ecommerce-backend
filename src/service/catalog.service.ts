@@ -67,12 +67,22 @@ function pageFilters(query: CatalogQuery): Prisma.Sql[] {
     where.push(Prisma.sql`product."brandId" IN (SELECT "id" FROM "Brand"
       WHERE "isActive" AND "slug" IN (${Prisma.join(query.brand)}))`);
   }
-  if (query.color) where.push(Prisma.sql`product."colors" && ARRAY[${Prisma.join(query.color)}]::text[]`);
-  if (query.size) where.push(Prisma.sql`product."sizes" && ARRAY[${Prisma.join(query.size)}]::text[]`);
+  if (query.color) {
+    where.push(Prisma.sql`product."colors" && ARRAY[${Prisma.join(query.color)}]::text[]`);
+  }
+  if (query.size) {
+    where.push(Prisma.sql`product."sizes" && ARRAY[${Prisma.join(query.size)}]::text[]`);
+  }
   if (query.gender) where.push(Prisma.sql`product."gender" IN (${Prisma.join(query.gender)})`);
-  if (query.ageGroup) where.push(Prisma.sql`product."ageGroup" IN (${Prisma.join(query.ageGroup)})`);
-  if (query.minPricePaise !== undefined) where.push(Prisma.sql`product."sellPaise" >= ${query.minPricePaise}`);
-  if (query.maxPricePaise !== undefined) where.push(Prisma.sql`product."sellPaise" <= ${query.maxPricePaise}`);
+  if (query.ageGroup) {
+    where.push(Prisma.sql`product."ageGroup" IN (${Prisma.join(query.ageGroup)})`);
+  }
+  if (query.minPricePaise !== undefined) {
+    where.push(Prisma.sql`product."sellPaise" >= ${query.minPricePaise}`);
+  }
+  if (query.maxPricePaise !== undefined) {
+    where.push(Prisma.sql`product."sellPaise" <= ${query.maxPricePaise}`);
+  }
   if (query.discount) where.push(ON_OFFER);
   if (query.minRating) where.push(Prisma.sql`product."ratingAverage" >= ${query.minRating}`);
   return where;
@@ -129,7 +139,8 @@ export const catalogService = {
     const cacheKey = createHash("sha1").update(JSON.stringify(query)).digest("hex");
     return getOrSetCache(`catalog:${cacheKey}`, () => {
       const filters = pageFilters(query);
-      return query.q ? searchProducts(query.q, query, filters) : sortedPage([VISIBLE_PRODUCT, ...filters], query);
+      if (query.q) return searchProducts(query.q, query, filters);
+      return sortedPage([VISIBLE_PRODUCT, ...filters], query);
     });
   },
 };
