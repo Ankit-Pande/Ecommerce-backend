@@ -25,7 +25,9 @@ async function callGemini<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(15000),
   });
-  if (response.status === 429) throw new AppError("AI is busy right now, please try again in a minute", 429);
+  if (response.status === 429) {
+    throw new AppError("AI is busy right now, please try again in a minute", 429);
+  }
   if (!response.ok) {
     const details = (await response.text()).slice(0, 300);
     logger.warn("Gemini request failed", { path, status: response.status, body: details });
@@ -36,16 +38,15 @@ async function callGemini<T>(path: string, body: unknown): Promise<T> {
 
 // Turns texts into 768-number vectors (products use RETRIEVAL_DOCUMENT, shopper questions RETRIEVAL_QUERY).
 export async function embedTexts(texts: string[], task: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY"): Promise<number[][]> {
+  const requests = texts.map((text) => ({
+    model: `models/${env.GEMINI_EMBED_MODEL}`,
+    content: { parts: [{ text }] },
+    taskType: task,
+    outputDimensionality: EMBEDDING_SIZE,
+  }));
   const data = await callGemini<{ embeddings: { values: number[] }[] }>(
     `${env.GEMINI_EMBED_MODEL}:batchEmbedContents`,
-    {
-      requests: texts.map((text) => ({
-        model: `models/${env.GEMINI_EMBED_MODEL}`,
-        content: { parts: [{ text }] },
-        taskType: task,
-        outputDimensionality: EMBEDDING_SIZE,
-      })),
-    },
+    { requests },
   );
   return data.embeddings.map((embedding) => embedding.values);
 }

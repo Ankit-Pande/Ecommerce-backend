@@ -22,7 +22,9 @@ export function signRefreshToken(data: RefreshTokenData): string {
 export function verifyAccessToken(token: string): AccessTokenData {
   try {
     const data = jwt.verify(token, env.JWT_ACCESS_SECRET, { algorithms: ["HS256"] });
-    if (typeof data === "string" || !data.userId || !data.sessionId) throw new Error("Token data missing");
+    if (typeof data === "string" || !data.userId || !data.sessionId) {
+      throw new Error("Token data missing");
+    }
     return { userId: data.userId, sessionId: data.sessionId };
   } catch (error) {
     throw new AppError(error instanceof jwt.TokenExpiredError ? "Token expired" : "Invalid token", 401);

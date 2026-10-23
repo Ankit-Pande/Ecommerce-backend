@@ -31,7 +31,8 @@ Background jobs run from `server.ts` (`runEvery`), not from scripts. Each run ta
 - Every function (and every service method, route handler and tool `run`/`confirmText`) has exactly one short `//` line right above it that says what it does. No other comments: if a line needs explaining, rename things or put it in this file.
 - Names a junior can read: `getCart`, `lockOrder`, `checkStock`. No short names: `question` not `q`, `product` not `p`, `error` not `err`, `response` not `res` (Express's own `req`, `res`, `next` stay). SQL aliases are full words too (`product`, `category`, `parent`).
 - Do not split code into many tiny functions. A helper is fine only when it is used in two or more places or it makes the caller clearly shorter.
-- Inline a value or object that is used once.
+- Inline a value or object that is used once, unless a name makes a long or dense line easier to read (`const isValidSignature = signatureMatches(...); if (!isValidSignature) { ... }`).
+- `if` or ternary: a ternary only picks one of two simple values on one short line (`const label = isActive ? "Live" : "Hidden"`). Use `if` for actions (return, throw, `next()`, saving), for three or more choices and for long lines. Never nest ternaries. An `if` whose line would pass about 100 characters gets braces.
 - Constants in `UPPER_CASE` at the top of the file.
 - Throw `new AppError(message, status)` for every expected error. Never `try/catch` just to rethrow; `asyncHandler` sends errors to `middleware/error.ts`.
 - Every route that takes input has `validate(schema)`. Shared pieces (`uuid`, `idParamSchema`, `pageParams`, `slug`, `phone`) live in `validation/common.ts`.

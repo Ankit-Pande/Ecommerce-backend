@@ -28,7 +28,9 @@ export const userService = {
   async deleteAccount(userId: string) {
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
     if (!user) throw new AppError("User not found", 404);
-    if (user.role === "SUPER_ADMIN") throw new AppError("Super admin account cannot be deleted", 403);
+    if (user.role === "SUPER_ADMIN") {
+      throw new AppError("Super admin account cannot be deleted", 403);
+    }
 
     await prisma.$transaction([
       prisma.user.update({

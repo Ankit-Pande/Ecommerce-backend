@@ -17,27 +17,39 @@ export function errorHandler(error: unknown, req: Request, res: Response, next: 
   if (bodyError === "entity.too.large") return send(413, "Request too large");
 
   if (error instanceof ZodError) {
-    const message = error.issues
-      .map((issue) => {
-        const field = issue.path.slice(1).join(".");
-        return field ? `${field}: ${issue.message}` : issue.message;
-      })
-      .join(", ");
-    return send(400, message);
+    const messages: string[] = [];
+    for (const issue of error.issues) {
+      const field = issue.path.slice(1).join(".");
+      if (field) {
+        messages.push(`${field}: ${issue.message}`);
+      } else {
+        messages.push(issue.message);
+      }
+    }
+    return send(400, messages.join(", "));
   }
 
   if (error instanceof multer.MulterError) {
-    return send(400, error.code === "LIMIT_FILE_SIZE" ? "File too large. Max size is 2MB." : error.message);
+    if (error.code === "LIMIT_FILE_SIZE") {
+      return send(400, "File too large. Max size is 2MB.");
+    }
+    return send(400, error.message);
   }
 
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.code === "P2002") return send(409, "This record already exists");
     if (error.code === "P2003") return send(400, "Related record not found");
     if (error.code === "P2025") return send(404, "Record not found");
-    if (error.code === "P2034") return send(409, "Request conflicted with another update. Please try again.");
-    if (error.code === "P2024" || error.code === "P2028") return send(503, "Server busy. Please try again.");
+    if (error.code === "P2034") {
+      return send(409, "Request conflicted with another update. Please try again.");
+    }
+    if (error.code === "P2024" || error.code === "P2028") {
+      return send(503, "Server busy. Please try again.");
+    }
   }
-  if (error instanceof Prisma.PrismaClientInitializationError) return send(503, "Server busy. Please try again.");
+  if (error instanceof Prisma.PrismaClientInitializationError) {
+    return send(503, "Server busy. Please try again.");
+  }
 
   if (error instanceof AppError) return send(error.statusCode, error.message);
 

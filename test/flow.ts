@@ -57,7 +57,9 @@ async function clearOldTestLimits() {
 
 // Usage: npm run test:flow — a shopper and the admin use every feature once; each step prints API, time, result.
 async function main() {
-  if (env.NODE_ENV !== "development") throw new Error("Run tests only with NODE_ENV=development (they add test data)");
+  if (env.NODE_ENV !== "development") {
+    throw new Error("Run tests only with NODE_ENV=development (they add test data)");
+  }
   if (redis.status !== "ready") await new Promise((resolve) => redis.once("ready", resolve));
   await clearOldTestLimits();
   const [product] = await prisma.$queryRaw<{ id: string; slug: string; stock: number; categoryId: string }[]>`
@@ -226,8 +228,9 @@ async function main() {
 
   console.log("\nOnline payment (Razorpay)");
   const webhookSecret = env.RAZORPAY_WEBHOOK_SECRET;
-  if (!env.RAZORPAY_KEY_ID || !webhookSecret) skip("Online payment", "set RAZORPAY_KEY_ID and RAZORPAY_WEBHOOK_SECRET");
-  else {
+  if (!env.RAZORPAY_KEY_ID || !webhookSecret) {
+    skip("Online payment", "set RAZORPAY_KEY_ID and RAZORPAY_WEBHOOK_SECRET");
+  } else {
     const online = await step("Online order", async () => {
       const buyNow = { productId: product.id, quantity: 1 };
       const body = { idempotencyKey: `${orderKey}-online`, addressId, paymentMethod: "ONLINE", buyNow };
@@ -333,9 +336,11 @@ async function main() {
     const [{ waiting }] = await prisma.$queryRaw<{ waiting: number }[]>`
       SELECT count(*)::int AS waiting FROM "Product" WHERE "embedding" IS NULL AND "isActive"`;
     const embeddingStep = "Embedding job fills the product";
-    if (!env.GEMINI_API_KEY) skip(embeddingStep, "set GEMINI_API_KEY");
-    else if (waiting > 2000) skip(embeddingStep, `${waiting} products are waiting, the job does 2,000 a minute`);
-    else {
+    if (!env.GEMINI_API_KEY) {
+      skip(embeddingStep, "set GEMINI_API_KEY");
+    } else if (waiting > 2000) {
+      skip(embeddingStep, `${waiting} products are waiting, the job does 2,000 a minute`);
+    } else {
       await step(embeddingStep, async () => {
         const started = Date.now();
         let filled = false;

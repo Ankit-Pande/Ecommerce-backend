@@ -53,6 +53,8 @@ export async function otpFor(phone: string) {
 // Calls one API like a browser would (from the given IP) and measures how long it took.
 export async function call(method: string, path: string, options: CallOptions = {}): Promise<Reply> {
   const started = performance.now();
+  let body = options.raw;
+  if (body === undefined && options.body !== undefined) body = JSON.stringify(options.body);
   const response = await fetch(API_URL + path, {
     method,
     headers: {
@@ -62,7 +64,7 @@ export async function call(method: string, path: string, options: CallOptions = 
       ...(options.cookie && { Cookie: options.cookie }),
       ...options.headers,
     },
-    body: options.raw ?? (options.body === undefined ? undefined : JSON.stringify(options.body)),
+    body,
   });
   const json = await response.json().catch(() => ({}));
   const cookie = response.headers.get("set-cookie")?.split(";")[0] ?? "";

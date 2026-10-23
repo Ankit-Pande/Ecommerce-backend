@@ -30,7 +30,9 @@ export function uploadImage(buffer: Buffer): Promise<string> {
   const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
   const isPng = buffer.subarray(0, 8).equals(PNG_START);
   const isWebp = buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP";
-  if (!isJpeg && !isPng && !isWebp) return Promise.reject(new AppError("Invalid image content", 400));
+  if (!isJpeg && !isPng && !isWebp) {
+    return Promise.reject(new AppError("Invalid image content", 400));
+  }
 
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
@@ -49,5 +51,6 @@ export function uploadImage(buffer: Buffer): Promise<string> {
 
 // Uploads all files of a request and returns their URLs in the same order.
 export function uploadFiles(files: Express.Multer.File[] | undefined): Promise<string[]> {
-  return Promise.all((files ?? []).map((file) => uploadImage(file.buffer)));
+  if (!files || files.length === 0) return Promise.resolve([]);
+  return Promise.all(files.map((file) => uploadImage(file.buffer)));
 }

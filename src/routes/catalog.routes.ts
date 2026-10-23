@@ -9,7 +9,12 @@ const router = Router();
 const searchLimiter = rateLimiter({ name: "catalog-search", seconds: 60, maxRequests: 30, allowIfRedisDown: true });
 
 // Applies the search limit only to text searches (?q=); browsing a category is not limited by it.
-const limitSearchOnly: RequestHandler = (req, res, next) => (req.query.q ? searchLimiter(req, res, next) : next());
+const limitSearchOnly: RequestHandler = (req, res, next) => {
+  if (req.query.q) {
+    return searchLimiter(req, res, next);
+  }
+  next();
+};
 
 router.get("/", limitSearchOnly, validate(catalogSchema), getCatalog);
 

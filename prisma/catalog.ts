@@ -327,7 +327,8 @@ function specsOf(text: string): Record<string, string> {
 
 // A shop-style price: 1234 -> 1299, 456 -> 459.
 function priceOf(rupees: number) {
-  return rupees < 1000 ? Math.max(99, Math.round(rupees / 10) * 10 - 1) : Math.floor(rupees / 100) * 100 + 99;
+  if (rupees < 1000) return Math.max(99, Math.round(rupees / 10) * 10 - 1);
+  return Math.floor(rupees / 100) * 100 + 99;
 }
 
 // Phones and tablets: one product per RAM/storage variant.
@@ -1358,7 +1359,8 @@ export function buildCatalog(total: number, random: () => number): CatalogProduc
   const shares = LINES.reduce((sum, line) => sum + line.share, 0);
   let planned = 0;
   LINES.forEach((line, index) => {
-    const count = index === LINES.length - 1 ? left - planned : Math.round((left * line.share) / shares);
+    let count = Math.round((left * line.share) / shares);
+    if (index === LINES.length - 1) count = left - planned;
     planned += count;
     models.push(...fashion(line, count, random, usedNames));
   });

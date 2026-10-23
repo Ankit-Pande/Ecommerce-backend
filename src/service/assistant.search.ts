@@ -407,13 +407,18 @@ function keyOf(name: string) {
 
 // Items whose words were all asked; when a found item is part of a longer found one, only the longer one stays.
 function findMentioned<T extends { key: string[] }>(items: T[], asked: Set<string>): T[] {
-  const found = items.filter(
-    (item) => item.key.length > 0 && (item.key.every((word) => asked.has(word)) || asked.has(item.key.join(""))),
-  );
-  return found.filter(
-    (item) =>
-      !found.some((other) => other.key.length > item.key.length && item.key.every((word) => other.key.includes(word))),
-  );
+  const found: T[] = [];
+  for (const item of items) {
+    const allWordsAsked = item.key.every((word) => asked.has(word));
+    const joinedWordAsked = asked.has(item.key.join(""));
+    if (item.key.length > 0 && (allWordsAsked || joinedWordAsked)) found.push(item);
+  }
+  return found.filter((item) => {
+    const insideLonger = found.some(
+      (other) => other.key.length > item.key.length && item.key.every((word) => other.key.includes(word)),
+    );
+    return !insideLonger;
+  });
 }
 
 // Colours named in the question; a plain colour ("blue") also matches its shades ("Navy Blue").
@@ -443,7 +448,8 @@ async function getVocabulary() {
 // Rupees to paise, with k / hazar (thousand) and lakh: ("2", "k") -> 200000.
 function toPaise(digits: string, unit?: string): number {
   const rupees = Number(digits.replace(/,/g, ""));
-  const multiplier = !unit ? 1 : unit.toLowerCase().startsWith("l") ? 100000 : 1000;
+  let multiplier = 1;
+  if (unit) multiplier = unit.toLowerCase().startsWith("l") ? 100000 : 1000;
   return Math.round(rupees * multiplier * 100);
 }
 
@@ -513,8 +519,9 @@ export async function readQuestion(rawText: string): Promise<Question> {
     .replace(/(\d+)\s+(gb|tb|mah|mp|hz|w|kg|g|ml|l)\b/g, "$1$2");
   const size = text.match(SIZE);
   if (size) {
-    question.size = size[3] ? `${size[3]}-${size[4]} Years` : (size[1] ?? size[2]).toUpperCase();
-    text = text.replace(size[0], " ");
+    const [found, sizeAfterWord, sizeBeforeWord, fromAge, toAge] = size;
+    question.size = fromAge ? `${fromAge}-${toAge} Years` : (sizeAfterWord ?? sizeBeforeWord).toUpperCase();
+    text = text.replace(found, " ");
   }
 
   // The words of a text without filler words, in base form.
@@ -564,7 +571,9 @@ export async function readQuestion(rawText: string): Promise<Question> {
     );
     question.categoryIds = [...new Set([...askedIds, ...children.map((category) => category.id)])];
     question.categoryNames = categories.map((category) => withoutPerson(category.name));
-    if (narrower.length > 0) question.skipNames = narrower.map((category) => withoutPerson(category.name));
+    if (narrower.length > 0) {
+      question.skipNames = narrower.map((category) => withoutPerson(category.name));
+    }
   }
   if (specs.length > 0) question.specs = specs.map((spec) => spec.name);
   if (who) {
@@ -592,7 +601,9 @@ export async function readQuestion(rawText: string): Promise<Question> {
 // SQL conditions for the hard filters: visible product, brand, category, colour, who, price, rating, offer, size, spec.
 function filterSql(question: Question): Prisma.Sql[] {
   const where = [VISIBLE_PRODUCT];
-  if (question.brandIds) where.push(Prisma.sql`product."brandId" IN (${Prisma.join(question.brandIds)})`);
+  if (question.brandIds) {
+    where.push(Prisma.sql`product."brandId" IN (${Prisma.join(question.brandIds)})`);
+  }
   if (question.categoryIds && question.categoryNames) {
     const inCategory = Prisma.sql`product."categoryId" IN (${Prisma.join(question.categoryIds)})`;
     if (question.words.length > 0 || question.gender || question.ageGroup) {
@@ -600,7 +611,9 @@ function filterSql(question: Question): Prisma.Sql[] {
       const notNarrower = (question.skipNames ?? []).map((name) => Prisma.sql`NOT (${nameMatch(name)})`);
       const byNameOnly = Prisma.join([Prisma.sql`(${Prisma.join(byName, " OR ")})`, ...notNarrower], " AND ");
       where.push(Prisma.sql`(${inCategory} OR (${byNameOnly}))`);
-    } else where.push(inCategory);
+    } else {
+      where.push(inCategory);
+    }
   }
   if (question.colors) {
     const named = Prisma.join(question.colors.map(nameMatch), " OR ");
@@ -633,7 +646,10 @@ function whereFor(question: Question) {
 
   const units = question.words.filter((word) => UNIT_WORD.test(word));
   const others = question.words.filter((word) => !UNIT_WORD.test(word));
-  const need = question.anyWord ? 1 : others.length <= 2 ? others.length : Math.ceil(others.length / 2);
+  let need: number;
+  if (question.anyWord) need = 1;
+  else if (others.length <= 2) need = others.length;
+  else need = Math.ceil(others.length / 2);
   where.push(...units.map(textMatch));
   if (others.length > 0) {
     where.push(
@@ -647,7 +663,8 @@ function whereFor(question: Question) {
 // Instant search: ids of matching products, asked category first, name matches next, then mixed across categories.
 async function searchDb(question: Question, limit: number, extraWhere: Prisma.Sql[]): Promise<string[]> {
   const nameWords = [...question.words, ...(question.modelNumbers ?? [])];
-  const nameHits = question.words.length > 0 ? [Prisma.sql`${countOf(nameWords, nameMatch)} DESC`] : [];
+  const nameHits: Prisma.Sql[] = [];
+  if (question.words.length > 0) nameHits.push(Prisma.sql`${countOf(nameWords, nameMatch)} DESC`);
   const rank = [...nameHits];
   if (question.words.length > 0) rank.push(Prisma.sql`${countOf(question.words, textMatch)} DESC`);
   if (question.occasions) {
@@ -655,21 +672,27 @@ async function searchDb(question: Question, limit: number, extraWhere: Prisma.Sq
     const textHasOccasion = Prisma.join(question.occasions.map(textMatch), " OR ");
     rank.push(Prisma.sql`(${nameHasOccasion}) DESC`, Prisma.sql`(${textHasOccasion}) DESC`);
   }
-  const sort = SORT_SQL[question.sort ?? (question.discount ? "discount" : "latest")];
+  let sortName = question.sort;
+  if (!sortName) sortName = question.discount ? "discount" : "latest";
+  const sort = SORT_SQL[sortName];
   const specs = (question.specs ?? []).map(
     (key) => Prisma.sql`substring(product."specs" ->> ${key}::text from ${SPEC_NUMBER}::text)::numeric
       * (CASE WHEN product."specs" ->> ${key}::text ~* ${SPEC_BIG_UNIT}::text THEN 1000 ELSE 1 END) DESC NULLS LAST`,
   );
   const byPrice = question.sort === "price_asc" || question.sort === "price_desc";
-  rank.push(...(byPrice ? [sort, ...specs] : [...specs, sort]), Prisma.sql`product."id" DESC`);
+  if (byPrice) rank.push(sort, ...specs);
+  else rank.push(...specs, sort);
+  rank.push(Prisma.sql`product."id" DESC`);
 
-  const inAskedCategory = question.categoryIds
-    ? [Prisma.sql`(product."categoryId" IN (${Prisma.join(question.categoryIds)})) DESC`]
-    : [];
-  const mixCategories = question.sort
-    ? []
-    : [Prisma.sql`ROW_NUMBER() OVER (PARTITION BY product."categoryId" ORDER BY ${Prisma.join(rank, ", ")})`];
-  const order = [...inAskedCategory, ...nameHits, ...mixCategories, ...rank];
+  const order: Prisma.Sql[] = [];
+  if (question.categoryIds) {
+    order.push(Prisma.sql`(product."categoryId" IN (${Prisma.join(question.categoryIds)})) DESC`);
+  }
+  order.push(...nameHits);
+  if (!question.sort) {
+    order.push(Prisma.sql`ROW_NUMBER() OVER (PARTITION BY product."categoryId" ORDER BY ${Prisma.join(rank, ", ")})`);
+  }
+  order.push(...rank);
 
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     SELECT product."id" FROM "Product" product
@@ -756,9 +779,8 @@ export async function searchIds(
   options: { where?: Prisma.Sql[]; spelling?: boolean } = {},
 ) {
   const extraWhere = options.where ?? [];
-  const ids = await getOrSetCache(`ai:db:${limit}:${hashOf({ ...question, text: undefined, extraWhere })}`, () =>
-    searchDb(question, limit, extraWhere),
-  );
+  const cacheKey = `ai:db:${limit}:${hashOf({ ...question, text: undefined, extraWhere })}`;
+  const ids = await getOrSetCache(cacheKey, () => searchDb(question, limit, extraWhere));
   if (ids.length > 0) return { ids, similar: false, match: whereFor(question) };
   if (question.words.length === 0) return { ids, similar: false, match: [] };
 
@@ -773,7 +795,10 @@ export async function searchIds(
   if (similar.length === 0 && options.spelling) {
     similar = await getOrSetCache(`ai:spelling:${key}`, () => searchBySpelling(question, extraWhere));
   }
-  const match = similar.length > 0 ? [VISIBLE_PRODUCT, Prisma.sql`product."id" IN (${Prisma.join(similar)})`] : [];
+  const match: Prisma.Sql[] = [];
+  if (similar.length > 0) {
+    match.push(VISIBLE_PRODUCT, Prisma.sql`product."id" IN (${Prisma.join(similar)})`);
+  }
   return { ids: similar, similar: similar.length > 0, match };
 }
 
@@ -781,11 +806,17 @@ export async function searchIds(
 export async function findProducts(question: Question, page: number) {
   const { ids, similar } = await searchIds(question, MAX_RESULTS);
   const cards = await liveCards(ids, question);
-  if (similar) {
-    if (question.sort === "price_asc") cards.sort((first, second) => first.finalPricePaise - second.finalPricePaise);
-    if (question.sort === "price_desc") cards.sort((first, second) => second.finalPricePaise - first.finalPricePaise);
-    if (question.sort === "rating") cards.sort((first, second) => second.rating.average - first.rating.average);
-    if (question.sort === "discount") cards.sort((first, second) => second.discountPercent - first.discountPercent);
+  if (similar && question.sort === "price_asc") {
+    cards.sort((first, second) => first.finalPricePaise - second.finalPricePaise);
+  }
+  if (similar && question.sort === "price_desc") {
+    cards.sort((first, second) => second.finalPricePaise - first.finalPricePaise);
+  }
+  if (similar && question.sort === "rating") {
+    cards.sort((first, second) => second.rating.average - first.rating.average);
+  }
+  if (similar && question.sort === "discount") {
+    cards.sort((first, second) => second.discountPercent - first.discountPercent);
   }
 
   const genders = new Set(cards.map((card) => card.gender));

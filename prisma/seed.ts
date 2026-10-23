@@ -207,6 +207,10 @@ async function main() {
     const pricePaise = item.price * 100;
     const discountPercent = chance(offerChance) ? between(minDiscount, maxDiscount) : 0;
     const offerEndsAt = discountPercent > 0 && chance(35) ? daysFromNow(between(2, 45)) : null;
+    let stock: number;
+    if (chance(5)) stock = 0;
+    else if (chance(10)) stock = between(1, 5);
+    else stock = between(10, 300);
 
     return {
       id: randomUUID(),
@@ -218,7 +222,7 @@ async function main() {
       discountPercent,
       sellPaise: finalPrice(pricePaise, discountPercent),
       offerEndsAt,
-      stock: chance(5) ? 0 : chance(10) ? between(1, 5) : between(10, 300),
+      stock,
       colors: item.colors,
       sizes: item.sizes,
       gender: item.gender,
@@ -306,14 +310,9 @@ async function main() {
     ] as const);
     const status = paymentMethod === "COD" && picked === "PENDING" ? "CONFIRMED" : picked;
 
-    const paymentStatus =
-      paymentMethod === "COD"
-        ? status === "DELIVERED"
-          ? ("COMPLETED" as const)
-          : ("PENDING" as const)
-        : status === "PENDING" || status === "CANCELLED"
-          ? ("PENDING" as const)
-          : ("COMPLETED" as const);
+    let paymentStatus: "PENDING" | "COMPLETED";
+    if (paymentMethod === "COD") paymentStatus = status === "DELIVERED" ? "COMPLETED" : "PENDING";
+    else paymentStatus = status === "PENDING" || status === "CANCELLED" ? "PENDING" : "COMPLETED";
 
     const orderId = randomUUID();
     const createdAt = daysAgo(between(1, 120));

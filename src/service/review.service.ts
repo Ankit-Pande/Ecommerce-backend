@@ -48,7 +48,9 @@ export const reviewService = {
       where: { productId, order: { userId, status: "DELIVERED" } },
       select: { id: true },
     });
-    if (!delivered) throw new AppError("You can review a product only after its order is delivered.", 403);
+    if (!delivered) {
+      throw new AppError("You can review a product only after its order is delivered.", 403);
+    }
 
     const review = await prisma.$transaction(async (db) => {
       await lockProduct(db, productId);

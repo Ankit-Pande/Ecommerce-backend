@@ -137,7 +137,9 @@ async function checkOpenOrderLimit(db: Prisma.TransactionClient, userId: string,
   const status = paymentMethod === "ONLINE" ? "PENDING" : "CONFIRMED";
   const limit = paymentMethod === "ONLINE" ? MAX_UNPAID_ONLINE_ORDERS : MAX_OPEN_COD_ORDERS;
   const open = await db.order.count({ where: { userId, paymentMethod, status } });
-  if (open >= limit) throw new AppError("You have too many open orders. Complete or cancel one first.", 409);
+  if (open >= limit) {
+    throw new AppError("You have too many open orders. Complete or cancel one first.", 409);
+  }
 }
 
 // Locks the order's row until the transaction ends and returns the order.
@@ -247,9 +249,11 @@ export const orderService = {
           data: { stock: { decrement: line.quantity } },
         });
         if (updated.count === 0) throw new AppError("Some products went out of stock", 409);
-        if (stockStatus(line.stockBefore) !== stockStatus(line.stockBefore - line.quantity)) stockStatusChanged = true;
+        const statusChanged = stockStatus(line.stockBefore) !== stockStatus(line.stockBefore - line.quantity);
+        if (statusChanged) stockStatusChanged = true;
       }
 
+      const paymentWindowEnd = new Date(Date.now() + PAYMENT_WINDOW_MINUTES * 60 * 1000);
       const order = await db.order.create({
         data: {
           userId,
@@ -258,8 +262,7 @@ export const orderService = {
           paymentMethod,
           totalPaise: latest.totalPaise,
           status: paymentMethod === "COD" ? "CONFIRMED" : "PENDING",
-          paymentExpiresAt:
-            paymentMethod === "ONLINE" ? new Date(Date.now() + PAYMENT_WINDOW_MINUTES * 60 * 1000) : null,
+          paymentExpiresAt: paymentMethod === "ONLINE" ? paymentWindowEnd : null,
           razorpayOrderId,
           shipName: shipTo.fullName,
           shipPhone: shipTo.phone,
@@ -274,8 +277,13 @@ export const orderService = {
         },
       });
 
-      const orderedCartItems = latest.lines.flatMap((line) => (line.cartItemId ? [line.cartItemId] : []));
-      if (orderedCartItems.length > 0) await db.cartItem.deleteMany({ where: { id: { in: orderedCartItems } } });
+      const orderedCartItems: string[] = [];
+      for (const line of latest.lines) {
+        if (line.cartItemId) orderedCartItems.push(line.cartItemId);
+      }
+      if (orderedCartItems.length > 0) {
+        await db.cartItem.deleteMany({ where: { id: { in: orderedCartItems } } });
+      }
       return { order, isNew: true, stockStatusChanged };
     });
 
@@ -349,7 +357,9 @@ export const orderService = {
         return;
       }
 
-      if (order.status === "PENDING") stockStatusChanged = await cancelAndReturnStock(db, order.id, "SYSTEM");
+      if (order.status === "PENDING") {
+        stockStatusChanged = await cancelAndReturnStock(db, order.id, "SYSTEM");
+      }
       await db.order.update({
         where: { id: order.id },
         data: { paymentStatus: "COMPLETED", razorpayPaymentId: payment.id, needsReview: true },
